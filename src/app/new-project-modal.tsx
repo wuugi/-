@@ -11,18 +11,18 @@ export function NewProjectModal() {
       <button
         type="button"
         onClick={() => dialogRef.current?.showModal()}
-        className="whitespace-nowrap rounded bg-foreground px-4 py-2 text-sm font-medium text-background"
+        className="whitespace-nowrap rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-shadow hover:shadow-md"
       >
         새 프로젝트 시작
       </button>
 
       <dialog
         ref={dialogRef}
-        className="m-auto w-full max-w-sm rounded-lg border border-zinc-200 bg-background p-0 backdrop:bg-black/40 dark:border-zinc-800"
+        className="m-auto w-full max-w-sm rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-0 shadow-xl backdrop:bg-black/40 dark:border-zinc-800"
       >
         <div className="p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">새 프로젝트 시작</h2>
+            <h2 className="text-lg font-semibold text-[var(--accent)]">새 프로젝트 시작</h2>
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
@@ -43,7 +43,7 @@ export function NewProjectModal() {
                 name="ticker"
                 required
                 defaultValue="TQQQ"
-                className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <option value="TQQQ">TQQQ</option>
                 <option value="SOXL">SOXL</option>
@@ -57,7 +57,7 @@ export function NewProjectModal() {
                 required
                 min={0}
                 step="0.01"
-                className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 placeholder="10000"
               />
             </label>
@@ -67,7 +67,7 @@ export function NewProjectModal() {
                 name="splitCount"
                 required
                 defaultValue="20"
-                className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <option value="20">20회차</option>
                 <option value="40">40회차</option>
@@ -79,7 +79,7 @@ export function NewProjectModal() {
                 name="crashProtectionPct"
                 required
                 defaultValue="20"
-                className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <option value="20">20%</option>
                 <option value="30">30%</option>
@@ -87,7 +87,7 @@ export function NewProjectModal() {
             </label>
             <button
               type="submit"
-              className="mt-2 rounded bg-foreground px-4 py-2 font-medium text-background"
+              className="mt-2 rounded-full bg-[var(--accent)] px-4 py-2.5 font-medium text-white shadow-sm transition-shadow hover:shadow-md"
             >
               프로젝트 시작하기
             </button>

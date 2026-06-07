@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8f9fa;
+  --foreground: #1f1f1f;
+  --surface: #ffffff;
+  --accent: #1a73e8;
+  --accent-soft: #e8f0fe;
+  --positive: #1e8e3e;
+  --positive-soft: #e6f4ea;
+  --negative: #d93025;
+  --negative-soft: #fce8e6;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #131314;
+    --foreground: #e3e3e3;
+    --surface: #1e1f20;
+    --accent: #8ab4f8;
+    --accent-soft: #2a3a52;
+    --positive: #81c995;
+    --positive-soft: #1e3a28;
+    --negative: #f28b82;
+    --negative-soft: #3c2422;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Google Sans", Roboto, Arial, Helvetica, sans-serif;
 }

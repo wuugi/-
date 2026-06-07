@@ -14,7 +14,7 @@ export default async function Home() {
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
       <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold sm:text-2xl">라오어의 무한매수법 - 프로젝트 목록</h1>
+          <h1 className="text-xl font-bold text-[var(--accent)] sm:text-2xl">라오어의 무한매수법</h1>
           <p className="mt-1 text-sm text-zinc-500">
             종목·분할수별로 운용 중인 무한매수 프로젝트를 관리합니다. 프로젝트를 선택하면 상세 대시보드로 이동합니다.
           </p>
@@ -26,7 +26,7 @@ export default async function Home() {
 
       <section className="mb-10">
         {summaries.length === 0 ? (
-          <p className="rounded-lg border border-zinc-200 p-6 text-center text-sm text-zinc-500 dark:border-zinc-800">
+          <p className="rounded-2xl border border-zinc-200 bg-[var(--surface)] p-6 text-center text-sm text-zinc-500 dark:border-zinc-800">
             등록된 프로젝트가 없습니다. 우측 상단의 &quot;새 프로젝트 시작&quot; 버튼을 눌러 시작하세요.
           </p>
         ) : (
@@ -38,16 +38,17 @@ export default async function Home() {
               const qty = holdings?.qty ?? 0;
               const phase = getPhase(tValue, strategy.splitCount);
               const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
+              const inProgress = currentCycle?.status === "진행중";
 
               return (
                 <li key={strategy.id}>
                   <Link
                     href={`/projects/${strategy.id}`}
-                    className="block h-full rounded-lg border border-zinc-200 p-5 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
+                    className="block h-full rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent)]/40 hover:shadow-md dark:border-zinc-800"
                   >
                     <div className="mb-3 flex items-center justify-between">
                       <h2 className="text-lg font-semibold">{strategy.ticker}</h2>
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+                      <span className="rounded-full bg-[var(--accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
                         {strategy.splitCount}분할
                       </span>
                     </div>
@@ -59,7 +60,18 @@ export default async function Home() {
                       <DataRow label="별%" value={`${fmt(starPercent)}%`} />
                       <DataRow label="평단가" value={avgPrice > 0 ? `$${fmt(avgPrice)}` : "-"} />
                       <DataRow label="보유수량" value={qty > 0 ? fmt(qty, 4) : "0"} />
-                      <DataRow label="상태" value={currentCycle?.status ?? "-"} />
+                      <dt className="text-zinc-500">상태</dt>
+                      <dd className="text-right">
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                            inProgress
+                              ? "bg-[var(--positive-soft)] text-[var(--positive)]"
+                              : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800"
+                          }`}
+                        >
+                          {currentCycle?.status ?? "-"}
+                        </span>
+                      </dd>
                     </dl>
                   </Link>
                 </li>

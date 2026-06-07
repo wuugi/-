@@ -100,7 +100,7 @@ export default async function ProjectDashboard({
         </Link>
       </div>
       <header className="mb-8 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-        <h1 className="text-xl font-bold sm:text-2xl">
+        <h1 className="text-xl font-bold text-[var(--accent)] sm:text-2xl">
           {strategy.ticker} 무한매수법 대시보드 (라오어 4.0)
         </h1>
         <span className="text-sm text-zinc-500">원금 ${fmt(strategy.principal, 0)}</span>
@@ -117,7 +117,7 @@ export default async function ProjectDashboard({
       </section>
 
       {/* 폭락률 보호 구간 표시 + 수정 */}
-      <section className="mb-8 flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800">
+      <section className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200/70 bg-[var(--surface)] px-4 py-3 text-sm shadow-sm dark:border-zinc-800">
         <span className="text-zinc-500">폭락률 보호 구간</span>
         <span className="font-semibold">{strategy.crashProtectionPct}%</span>
         <form action={updateCrashProtection} className="ml-auto flex items-center gap-2">
@@ -130,7 +130,7 @@ export default async function ProjectDashboard({
             <option value="20">20%</option>
             <option value="30">30%</option>
           </select>
-          <button type="submit" className="rounded bg-foreground px-3 py-1 text-sm font-medium text-background">
+          <button type="submit" className="rounded-full bg-[var(--accent)] px-3.5 py-1 text-sm font-medium text-white shadow-sm transition-shadow hover:shadow-md">
             변경
           </button>
         </form>
@@ -138,7 +138,7 @@ export default async function ProjectDashboard({
 
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 오늘의 매수/매도 추천 */}
-        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+        <section className="rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm dark:border-zinc-800">
           <h2 className="mb-3 text-lg font-semibold">오늘의 매수/매도 추천</h2>
           {!latestPrice ? (
             <p className="text-sm text-zinc-500">
@@ -146,7 +146,7 @@ export default async function ProjectDashboard({
             </p>
           ) : (
             <div className="flex flex-col gap-4 text-sm">
-              <div className="rounded bg-zinc-100 px-3 py-2 text-xs dark:bg-zinc-900">
+              <div className="rounded-xl bg-[var(--accent-soft)] px-3 py-2 text-xs">
                 <p>
                   별지점 {starPoint !== null ? `$${fmt(starPoint)}` : "-"} (별% {fmt(starPercent)}%) · 매수점{" "}
                   {buyTriggerPrice !== null ? `$${fmt(buyTriggerPrice)}` : "-"} · 매도점{" "}
@@ -168,7 +168,7 @@ export default async function ProjectDashboard({
                 </h3>
                 <div className="overflow-x-auto rounded">
                 <table className="w-full min-w-[480px] overflow-hidden text-xs">
-                  <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
+                  <thead className="bg-[var(--accent-soft)]/60 text-left">
                     <tr>
                       <th className="whitespace-nowrap px-2 py-1.5">단계</th>
                       <th className="whitespace-nowrap px-2 py-1.5">사유</th>
@@ -195,9 +195,9 @@ export default async function ProjectDashboard({
                             <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(tier.qty), 0)}주</td>
                             <td className="px-2 py-1.5">
                               <span
-                                className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
+                                className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
                                   filled
-                                    ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                                    ? "bg-[var(--positive-soft)] text-[var(--positive)]"
                                     : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                                 }`}
                               >
@@ -222,7 +222,7 @@ export default async function ProjectDashboard({
                     T값이 1 미만(첫 매수 단계)에서는 매도 지정가를 걸지 않습니다. T값이 1 이상이 되면 매일 갱신됩니다.
                   </p>
                 ) : sellPlan ? (
-                  <div className="flex flex-col gap-2 rounded bg-zinc-100 px-3 py-2 dark:bg-zinc-900">
+                  <div className="flex flex-col gap-2 rounded-xl bg-[var(--accent-soft)] px-3 py-2">
                     <p>
                       <span className="font-semibold">쿼터매도 (보유의 1/4)</span>: 별지점 ${fmt(sellPlan.quarterSell.limitPrice)}{" "}
                       LOC 매도 {fmt(Math.round(sellPlan.quarterSell.qty), 0)}주 · 체결 시 T = 직전T × 0.75
@@ -255,7 +255,7 @@ export default async function ProjectDashboard({
           <form action={fetchAndRecordPrice} className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-4 text-sm dark:border-zinc-800">
             <input type="hidden" name="ticker" value={strategy.ticker} />
             <span className="text-zinc-500">최근 영업일 종가를 자동으로 가져와 기록합니다 (Yahoo Finance).</span>
-            <button type="submit" className="ml-auto shrink-0 whitespace-nowrap rounded border border-zinc-300 px-3 py-1.5 font-medium dark:border-zinc-700">
+            <button type="submit" className="ml-auto shrink-0 whitespace-nowrap rounded-full border border-[var(--accent)]/40 px-4 py-1.5 font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]">
               종가 자동 수집
             </button>
           </form>
@@ -269,7 +269,7 @@ export default async function ProjectDashboard({
                 name="date"
                 defaultValue={todayIso()}
                 required
-                className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               />
             </label>
             <label className="flex flex-1 flex-col gap-1 text-sm">
@@ -280,22 +280,22 @@ export default async function ProjectDashboard({
                 step="0.01"
                 min={0}
                 required
-                className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               />
             </label>
-            <button type="submit" className="shrink-0 whitespace-nowrap rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background">
+            <button type="submit" className="shrink-0 whitespace-nowrap rounded-full bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-shadow hover:shadow-md">
               종가 입력
             </button>
           </form>
         </section>
 
         {/* T값 / 별% 요약 */}
-        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+        <section className="rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm dark:border-zinc-800">
           <h2 className="mb-3 text-lg font-semibold">T값 진행 현황</h2>
           <div className="flex flex-col gap-3">
-            <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-[var(--accent-soft)]">
               <div
-                className="h-full bg-emerald-500 transition-all"
+                className="h-full bg-[var(--accent)] transition-all"
                 style={{ width: `${Math.min((tValue / strategy.splitCount) * 100, 100)}%` }}
               />
             </div>
@@ -318,9 +318,9 @@ export default async function ProjectDashboard({
       {/* 사이클별 운용 내역 */}
       <section className="mb-8">
         <h2 className="mb-3 text-lg font-semibold">사이클별 운용 내역</h2>
-        <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+        <div className="overflow-x-auto rounded-2xl border border-zinc-200/70 bg-[var(--surface)] shadow-sm dark:border-zinc-800">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
+            <thead className="bg-[var(--accent-soft)]/60 text-left">
               <tr>
                 <th className="px-3 py-2">사이클</th>
                 <th className="px-3 py-2">상태</th>
@@ -341,9 +341,9 @@ export default async function ProjectDashboard({
                     <td className="px-3 py-2">{c.cycleNo}회차</td>
                     <td className="px-3 py-2">
                       <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                           c.status === "진행중"
-                            ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                            ? "bg-[var(--positive-soft)] text-[var(--positive)]"
                             : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
                         }`}
                       >
@@ -362,14 +362,14 @@ export default async function ProjectDashboard({
 
       {/* 거래 입력 폼 + 최근 체결 내역 */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+        <div className="rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm dark:border-zinc-800">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">거래 입력</h2>
             <form action={autoRecordTodayFills}>
               <input type="hidden" name="strategyId" value={strategy.id} />
               <button
                 type="submit"
-                className="whitespace-nowrap rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium dark:border-zinc-700"
+                className="whitespace-nowrap rounded-full border border-[var(--accent)]/40 px-3.5 py-1.5 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
               >
                 최근 종가 기준 자동 기록
               </button>
@@ -389,7 +389,7 @@ export default async function ProjectDashboard({
                   name="date"
                   defaultValue={todayIso()}
                   required
-                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
               <label className="flex min-w-0 flex-1 flex-col gap-1">
@@ -397,7 +397,7 @@ export default async function ProjectDashboard({
                 <select
                   name="side"
                   required
-                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 >
                   <option value="buy">매수</option>
                   <option value="sell">매도</option>
@@ -409,7 +409,7 @@ export default async function ProjectDashboard({
               <select
                 name="tradeKind"
                 required
-                className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <optgroup label="매수">
                   <option value="first">첫매수 (T 0 → 진행)</option>
@@ -432,7 +432,7 @@ export default async function ProjectDashboard({
                   step="0.01"
                   min={0}
                   required
-                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
               <label className="flex min-w-0 flex-1 flex-col gap-1">
@@ -443,28 +443,28 @@ export default async function ProjectDashboard({
                   step="0.0001"
                   min={0}
                   required
-                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
             </div>
-            <button type="submit" className="mt-1 rounded bg-foreground px-4 py-2 font-medium text-background">
+            <button type="submit" className="mt-1 rounded-full bg-[var(--accent)] px-4 py-2 font-medium text-white shadow-sm transition-shadow hover:shadow-md">
               체결 기록 추가
             </button>
           </form>
         </div>
 
-        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+        <div className="rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm dark:border-zinc-800">
           <h2 className="mb-3 text-lg font-semibold">최근 체결 내역</h2>
           <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto text-sm">
             {allTrades.length === 0 ? (
               <li className="text-zinc-500">체결 내역이 없습니다.</li>
             ) : (
               allTrades.slice(0, 20).map((t) => (
-                <li key={t.id} className="flex flex-col gap-0.5 rounded bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
+                <li key={t.id} className="flex flex-col gap-0.5 rounded-xl bg-zinc-100/80 px-3 py-1.5 dark:bg-zinc-800/60">
                   <div className="flex justify-between">
                     <span>
                       {t.date} ·{" "}
-                      <span className={t.side === "buy" ? "text-blue-600 dark:text-blue-400" : "text-red-600 dark:text-red-400"}>
+                      <span className={t.side === "buy" ? "text-[var(--positive)]" : "text-[var(--negative)]"}>
                         {t.side === "buy" ? "매수" : "매도"}
                       </span>{" "}
                       ({t.tradeKind})
@@ -489,9 +489,9 @@ export default async function ProjectDashboard({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 px-4 py-3 dark:border-zinc-800">
+    <div className="rounded-2xl border border-zinc-200/70 bg-[var(--surface)] px-4 py-3 shadow-sm dark:border-zinc-800">
       <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold">{value}</p>
+      <p className="mt-1 text-lg font-semibold text-[var(--accent)]">{value}</p>
     </div>
   );
 }
@@ -500,9 +500,9 @@ function SellFillBadge({ limitPrice, closePrice }: { limitPrice: number; closePr
   const filled = judgeSellFill(limitPrice, closePrice);
   return (
     <span
-      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
+      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
         filled
-          ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+          ? "bg-[var(--negative-soft)] text-[var(--negative)]"
           : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
       }`}
     >
@@ -524,9 +524,9 @@ function LimitSellFillBadge({
   const basis = dayHigh != null ? "장중 고가 ≥ 지정가" : "종가 ≥ 지정가 (고가 데이터 없음)";
   return (
     <span
-      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
+      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
         filled
-          ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+          ? "bg-[var(--negative-soft)] text-[var(--negative)]"
           : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
       }`}
     >
