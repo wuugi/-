@@ -326,34 +326,34 @@ export default async function ProjectDashboard({
           <form action={recordTrade} className="flex flex-col gap-3 text-sm">
             <input type="hidden" name="strategyId" value={strategy.id} />
             <div className="flex gap-3">
-              <label className="flex flex-1 flex-col gap-1">
+              <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span>날짜</span>
                 <input
                   type="date"
                   name="date"
                   defaultValue={todayIso()}
                   required
-                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
-              <label className="flex flex-1 flex-col gap-1">
+              <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span>구분</span>
                 <select
                   name="side"
                   required
-                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
                 >
                   <option value="buy">매수</option>
                   <option value="sell">매도</option>
                 </select>
               </label>
             </div>
-            <label className="flex flex-col gap-1">
+            <label className="flex min-w-0 flex-col gap-1">
               <span>체결 종류 (T값 변화 결정)</span>
               <select
                 name="tradeKind"
                 required
-                className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <optgroup label="매수">
                   <option value="first">첫매수 (T 0 → 진행)</option>
@@ -368,7 +368,7 @@ export default async function ProjectDashboard({
               </select>
             </label>
             <div className="flex gap-3">
-              <label className="flex flex-1 flex-col gap-1">
+              <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span>가격 ($)</span>
                 <input
                   type="number"
@@ -376,10 +376,10 @@ export default async function ProjectDashboard({
                   step="0.01"
                   min={0}
                   required
-                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
-              <label className="flex flex-1 flex-col gap-1">
+              <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span>수량</span>
                 <input
                   type="number"
@@ -387,7 +387,7 @@ export default async function ProjectDashboard({
                   step="0.0001"
                   min={0}
                   required
-                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
             </div>
