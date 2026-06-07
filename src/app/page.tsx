@@ -1,65 +1,366 @@
-import Image from "next/image";
+import { createStrategy, recordTrade } from "./actions";
+import { recordPriceSnapshot } from "./actions-price";
+import {
+  getActiveStrategy,
+  getCurrentRound,
+  getLatestHoldings,
+  getRecentPriceSnapshots,
+  getRoundsByStrategy,
+  getTradesByStrategy,
+} from "@/lib/queries";
+import {
+  getBuyPlan,
+  getRiskGauge,
+  getSellPlan,
+  type RiskGauge,
+} from "@/lib/lao-strategy";
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function fmt(n: number, digits = 2) {
+  return n.toLocaleString("ko-KR", { maximumFractionDigits: digits });
+}
+
+export default async function Home() {
+  const strategy = await getActiveStrategy();
+
+  if (!strategy) {
+    return (
+      <div className="mx-auto w-full max-w-md px-6 py-16">
+        <h1 className="mb-6 text-2xl font-bold">라오어의 무한매수법 - 전략 등록</h1>
+        <form action={createStrategy} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-medium">종목 (예: TQQQ, SOXL)</span>
+            <input
+              name="ticker"
+              required
+              className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+              placeholder="TQQQ"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-medium">원금 ($)</span>
+            <input
+              type="number"
+              name="principal"
+              required
+              min={0}
+              step="0.01"
+              className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+              placeholder="10000"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-medium">분할 카운트</span>
+            <select
+              name="splitCount"
+              required
+              className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              <option value="20">20회차</option>
+              <option value="40">40회차</option>
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="mt-2 rounded bg-foreground px-4 py-2 font-medium text-background"
           >
-            Documentation
-          </a>
+            전략 시작하기
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  const [currentRound, holdings, allRounds, allTrades, recentPrices] = await Promise.all([
+    getCurrentRound(strategy.id),
+    getLatestHoldings(strategy.id),
+    getRoundsByStrategy(strategy.id),
+    getTradesByStrategy(strategy.id),
+    getRecentPriceSnapshots(strategy.ticker, 30),
+  ]);
+
+  const avgPrice = holdings?.avgPrice ?? 0;
+  const qty = holdings?.qty ?? 0;
+  const cashBalance = holdings?.cashBalance ?? strategy.principal;
+
+  const sortedPrices = [...recentPrices].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const latestPrice = sortedPrices.at(-1);
+  const recentHigh = sortedPrices.reduce((max, p) => Math.max(max, p.closePrice), 0);
+
+  let riskGauge: RiskGauge | null = null;
+  let buyPlan: ReturnType<typeof getBuyPlan> | null = null;
+  let sellPlan: ReturnType<typeof getSellPlan> | null = null;
+
+  if (latestPrice && currentRound) {
+    riskGauge = getRiskGauge(latestPrice.closePrice, recentHigh || latestPrice.closePrice);
+    buyPlan = getBuyPlan(strategy.principal, strategy.splitCount, latestPrice.closePrice, riskGauge);
+    if (qty > 0 && avgPrice > 0) {
+      sellPlan = getSellPlan(avgPrice, qty, currentRound.targetRate);
+    }
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-4xl px-6 py-10">
+      <header className="mb-8 flex items-baseline justify-between">
+        <h1 className="text-2xl font-bold">
+          {strategy.ticker} 무한매수법 대시보드
+        </h1>
+        <span className="text-sm text-zinc-500">원금 ${fmt(strategy.principal, 0)}</span>
+      </header>
+
+      {/* 현재 상태 요약 */}
+      <section className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <StatCard label="회차" value={currentRound ? `${currentRound.roundNo} / ${strategy.splitCount}` : "-"} />
+        <StatCard label="원금" value={`$${fmt(strategy.principal, 0)}`} />
+        <StatCard label="분할카운트" value={`${strategy.splitCount}`} />
+        <StatCard label="전후반전" value={currentRound?.phase ?? "-"} />
+        <StatCard label="평단가" value={avgPrice > 0 ? `$${fmt(avgPrice)}` : "-"} />
+        <StatCard label="보유수량" value={qty > 0 ? fmt(qty, 4) : "0"} />
+      </section>
+
+      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* 오늘의 매수/매도 추천 */}
+        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+          <h2 className="mb-3 text-lg font-semibold">오늘의 매수/매도 추천</h2>
+          {!latestPrice ? (
+            <p className="text-sm text-zinc-500">
+              종가 데이터가 없습니다. 아래에서 오늘 종가를 입력하면 추천이 계산됩니다.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4 text-sm">
+              <div>
+                <h3 className="mb-1 font-medium">매수 계획 (1회차 예산: ${fmt(strategy.principal / strategy.splitCount)})</h3>
+                <ul className="flex flex-col gap-1">
+                  {buyPlan?.map((item) => (
+                    <li key={item.label} className="flex justify-between rounded bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
+                      <span>{item.label} 매수</span>
+                      <span>
+                        ${fmt(item.price)} x {fmt(item.qty, 4)}주
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="mb-1 font-medium">매도 계획</h3>
+                {sellPlan ? (
+                  <p className="rounded bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
+                    목표가 ${fmt(sellPlan.sellPrice)} (수익률 {currentRound?.targetRate}%)에 보유 {fmt(sellPlan.sellQty, 4)}주 전량 매도
+                  </p>
+                ) : (
+                  <p className="text-zinc-500">보유 수량이 없어 매도 계획이 없습니다.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <form action={recordPriceSnapshot} className="mt-4 flex items-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            <input type="hidden" name="ticker" value={strategy.ticker} />
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span>날짜</span>
+              <input
+                type="date"
+                name="date"
+                defaultValue={todayIso()}
+                required
+                className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span>종가 ($)</span>
+              <input
+                type="number"
+                name="closePrice"
+                step="0.01"
+                min={0}
+                required
+                className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <button type="submit" className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background">
+              종가 입력
+            </button>
+          </form>
+        </section>
+
+        {/* 리스크 게이지 */}
+        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+          <h2 className="mb-3 text-lg font-semibold">리스크 게이지</h2>
+          {riskGauge ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                <div
+                  className={`h-full transition-all ${
+                    riskGauge === 40 ? "bg-red-500" : riskGauge === 30 ? "bg-amber-500" : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${(riskGauge / 40) * 100}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>20단계 (안정)</span>
+                <span>30단계 (주의)</span>
+                <span>40단계 (위험)</span>
+              </div>
+              <p className="text-sm">
+                현재 게이지: <span className="font-semibold">{riskGauge}단계</span>
+                {recentHigh > 0 && latestPrice && (
+                  <>
+                    {" "}
+                    (최근 고점 대비 {fmt(((recentHigh - latestPrice.closePrice) / recentHigh) * 100)}% 하락)
+                  </>
+                )}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-500">종가 데이터를 입력하면 리스크 게이지가 표시됩니다.</p>
+          )}
+        </section>
+      </div>
+
+      {/* 회차별 운용 내역 */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-lg font-semibold">회차별 운용 내역</h2>
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
+              <tr>
+                <th className="px-3 py-2">회차</th>
+                <th className="px-3 py-2">전후반전</th>
+                <th className="px-3 py-2">목표 수익률</th>
+                <th className="px-3 py-2">상태</th>
+                <th className="px-3 py-2">시작일</th>
+                <th className="px-3 py-2">완료일</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allRounds.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-4 text-center text-zinc-500">
+                    회차 정보가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                [...allRounds].reverse().map((r) => (
+                  <tr key={r.id} className="border-t border-zinc-200 dark:border-zinc-800">
+                    <td className="px-3 py-2">{r.roundNo}</td>
+                    <td className="px-3 py-2">{r.phase}</td>
+                    <td className="px-3 py-2">{r.targetRate}%</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs ${
+                          r.status === "진행중"
+                            ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                            : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">{r.startedAt}</td>
+                    <td className="px-3 py-2">{r.completedAt ?? "-"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      </main>
+      </section>
+
+      {/* 거래 입력 폼 + 최근 체결 내역 */}
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+          <h2 className="mb-3 text-lg font-semibold">거래 입력</h2>
+          <form action={recordTrade} className="flex flex-col gap-3 text-sm">
+            <input type="hidden" name="strategyId" value={strategy.id} />
+            <div className="flex gap-3">
+              <label className="flex flex-1 flex-col gap-1">
+                <span>날짜</span>
+                <input
+                  type="date"
+                  name="date"
+                  defaultValue={todayIso()}
+                  required
+                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1">
+                <span>구분</span>
+                <select
+                  name="side"
+                  required
+                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  <option value="buy">매수</option>
+                  <option value="sell">매도</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <label className="flex flex-1 flex-col gap-1">
+                <span>가격 ($)</span>
+                <input
+                  type="number"
+                  name="price"
+                  step="0.01"
+                  min={0}
+                  required
+                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1">
+                <span>수량</span>
+                <input
+                  type="number"
+                  name="qty"
+                  step="0.0001"
+                  min={0}
+                  required
+                  className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+              </label>
+            </div>
+            <button type="submit" className="mt-1 rounded bg-foreground px-4 py-2 font-medium text-background">
+              체결 기록 추가
+            </button>
+          </form>
+        </div>
+
+        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+          <h2 className="mb-3 text-lg font-semibold">최근 체결 내역</h2>
+          <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto text-sm">
+            {allTrades.length === 0 ? (
+              <li className="text-zinc-500">체결 내역이 없습니다.</li>
+            ) : (
+              allTrades.slice(0, 20).map((t) => (
+                <li key={t.id} className="flex justify-between rounded bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
+                  <span>
+                    {t.date} ·{" "}
+                    <span className={t.side === "buy" ? "text-blue-600 dark:text-blue-400" : "text-red-600 dark:text-red-400"}>
+                      {t.side === "buy" ? "매수" : "매도"}
+                    </span>
+                  </span>
+                  <span>
+                    ${fmt(t.price)} x {fmt(t.qty, 4)}주
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+          <p className="mt-3 text-xs text-zinc-500">예수금: ${fmt(cashBalance)}</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-200 px-4 py-3 dark:border-zinc-800">
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{value}</p>
     </div>
   );
 }
