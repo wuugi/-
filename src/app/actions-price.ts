@@ -6,7 +6,13 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { fetchLatestClosePrice } from "@/lib/price-fetch";
 
-async function upsertPriceSnapshot(ticker: string, date: string, closePrice: number) {
+async function upsertPriceSnapshot(
+  ticker: string,
+  date: string,
+  closePrice: number,
+  dayHigh: number | null = null,
+  dayLow: number | null = null
+) {
   const existing = await db
     .select()
     .from(priceSnapshots)
@@ -16,14 +22,14 @@ async function upsertPriceSnapshot(ticker: string, date: string, closePrice: num
   if (existing[0]) {
     await db
       .update(priceSnapshots)
-      .set({ closePrice })
+      .set({ closePrice, dayHigh, dayLow })
       .where(eq(priceSnapshots.id, existing[0].id));
   } else {
-    await db.insert(priceSnapshots).values({ ticker, date, closePrice });
+    await db.insert(priceSnapshots).values({ ticker, date, closePrice, dayHigh, dayLow });
   }
 }
 
-/** 종가 스냅샷을 기록한다 (이미 있는 날짜면 갱신) */
+/** 종가 스냅샷을 기록한다 (이미 있는 날짜면 갱신). 수동 입력은 고가/저가를 알 수 없으므로 비워둔다 */
 export async function recordPriceSnapshot(formData: FormData) {
   const ticker = String(formData.get("ticker") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
@@ -33,12 +39,12 @@ export async function recordPriceSnapshot(formData: FormData) {
     throw new Error("종가 입력값이 올바르지 않습니다.");
   }
 
-  await upsertPriceSnapshot(ticker, date, closePrice);
+  await upsertPriceSnapshot(ticker, date, closePrice, null, null);
 
   revalidatePath("/", "layout");
 }
 
-/** Yahoo Finance에서 최근 영업일 종가를 자동으로 가져와 기록한다 (이미 있는 날짜면 갱신) */
+/** Yahoo Finance에서 최근 영업일 종가/고가/저가를 자동으로 가져와 기록한다 (이미 있는 날짜면 갱신) */
 export async function fetchAndRecordPrice(formData: FormData) {
   const ticker = String(formData.get("ticker") ?? "").trim();
 
@@ -51,7 +57,7 @@ export async function fetchAndRecordPrice(formData: FormData) {
     throw new Error("종가를 자동으로 가져오지 못했습니다. 잠시 후 다시 시도하거나 직접 입력하세요.");
   }
 
-  await upsertPriceSnapshot(ticker, latest.date, latest.closePrice);
+  await upsertPriceSnapshot(ticker, latest.date, latest.closePrice, latest.dayHigh, latest.dayLow);
 
   revalidatePath("/", "layout");
 }

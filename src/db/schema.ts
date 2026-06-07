@@ -28,6 +28,8 @@ export const priceSnapshots = sqliteTable("price_snapshots", {
   ticker: text("ticker").notNull(),
   date: text("date").notNull(), // ISO date (YYYY-MM-DD)
   closePrice: real("close_price").notNull(),
+  dayHigh: real("day_high"), // 장중 고가 (자동 수집 시에만 채워짐, 지정가 매도의 장중 체결 판단에 사용)
+  dayLow: real("day_low"), // 장중 저가 (자동 수집 시에만 채워짐)
 });
 
 // 실제 체결 기록

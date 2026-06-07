@@ -1,11 +1,28 @@
 "use server";
 
 import { db } from "@/db/client";
-import { strategies, cycles, trades, holdingsDaily } from "@/db/schema";
-import { eq, asc, desc } from "drizzle-orm";
+import { strategies, cycles, trades, holdingsDaily, priceSnapshots } from "@/db/schema";
+import { and, eq, asc, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { applyTDelta, type TradeKind } from "@/lib/lao-strategy";
+import {
+  applyTDelta,
+  getDailyBuyBudget,
+  getFirstBuyLadder,
+  getFirstHalfLadder,
+  getPhase,
+  getSecondHalfLadder,
+  getSellPlan,
+  getStarPercent,
+  getStarPoint,
+  judgeBuyFill,
+  judgeLimitSellFill,
+  judgeSellFill,
+  type CrashProtectionPct,
+  type LadderTier,
+  type Ticker,
+  type TradeKind,
+} from "@/lib/lao-strategy";
 
 const BUY_KINDS: TradeKind[] = ["first", "full", "half", "extra"];
 const SELL_KINDS: TradeKind[] = ["quarterSell", "remainderSell"];
@@ -202,4 +219,132 @@ export async function recordTrade(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath(`/projects/${strategyId}`);
+}
+
+/**
+ * 최근 종가를 기준으로 "오늘의 매수/매도 추천" 화면과 동일한 방식으로 LOC/지정가 체결 여부를 판단하고,
+ * 체결로 판단된 만큼 자동으로 체결 기록을 추가한다 (이미 같은 날짜·종류로 기록된 건은 건너뛴다).
+ *  - 매수 사다리: 종가 ≤ 지정가인 단계들의 수량을 합산해 1건으로 기록 (T값은 하루 1회 변화 기준)
+ *  - 쿼터매도(LOC): 종가 ≥ 별지점이면 종가에 체결된 것으로 기록
+ *  - 잔여 지정가 매도: 장중 고가 데이터가 있으면 고가 기준으로, 없으면 종가 기준으로 체결 가능성을 판단해
+ *    지정가에 체결된 것으로 기록한다 (실제 체결가가 더 좋았을 수 있으므로 거래 입력에서 보정 가능)
+ */
+export async function autoRecordTodayFills(formData: FormData) {
+  const strategyId = Number(formData.get("strategyId"));
+  if (!strategyId) throw new Error("전략을 찾을 수 없습니다.");
+
+  const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
+  if (!strategy) throw new Error("전략을 찾을 수 없습니다.");
+
+  const ticker = strategy.ticker as Ticker;
+  const crashProtectionPct = strategy.crashProtectionPct as CrashProtectionPct;
+
+  const [latestHoldings] = await db
+    .select()
+    .from(holdingsDaily)
+    .where(eq(holdingsDaily.strategyId, strategyId))
+    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
+    .limit(1);
+
+  const [latestPrice] = await db
+    .select()
+    .from(priceSnapshots)
+    .where(eq(priceSnapshots.ticker, strategy.ticker))
+    .orderBy(desc(priceSnapshots.date), desc(priceSnapshots.id))
+    .limit(1);
+
+  if (!latestPrice) {
+    throw new Error("종가 데이터가 없어 자동 기록할 수 없습니다. 먼저 종가를 입력하세요.");
+  }
+
+  const avgPrice = latestHoldings?.avgPrice ?? 0;
+  const qtyHeld = latestHoldings?.qty ?? 0;
+  const cashBalance = latestHoldings?.cashBalance ?? strategy.principal;
+  const tValue = latestHoldings?.tValue ?? 0;
+
+  const date = latestPrice.date;
+  const closePrice = latestPrice.closePrice;
+  const dayHigh = latestPrice.dayHigh ?? null;
+  const prevClose = closePrice;
+
+  const phase = getPhase(tValue, strategy.splitCount);
+  const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
+  const starPoint = avgPrice > 0 ? getStarPoint(avgPrice, starPercent) : null;
+  const dailyBudget = getDailyBuyBudget(tValue, strategy.splitCount, strategy.principal, cashBalance);
+
+  let buyLadder: LadderTier[] = [];
+  if (prevClose > 0) {
+    if (tValue <= 0) {
+      buyLadder = getFirstBuyLadder(prevClose, dailyBudget, crashProtectionPct);
+    } else if (phase === "전반전" && avgPrice > 0 && starPoint !== null) {
+      buyLadder = getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct);
+    } else if (starPoint !== null) {
+      buyLadder = getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
+    }
+  }
+
+  const sellPlan =
+    tValue >= 1 && qtyHeld > 0 && avgPrice > 0 && starPoint !== null
+      ? getSellPlan(ticker, avgPrice, qtyHeld, starPoint)
+      : null;
+
+  // 같은 날짜에 이미 (수동/자동) 기록이 있으면 자동 기록을 건너뛴다.
+  // T값/평단가 등은 하루에 한 번만 변하므로, 재실행 시 변경된 상태로 사다리를
+  // 다시 계산해 같은 종가에 대해 또 다른 "체결"을 만들어내는 연쇄 오기록을 막기 위함이다.
+  const existingTradesForDate = await db
+    .select()
+    .from(trades)
+    .where(and(eq(trades.strategyId, strategyId), eq(trades.date, date)));
+  if (existingTradesForDate.length > 0) {
+    throw new Error(
+      `${date}에는 이미 기록된 체결이 있어 자동 기록을 건너뜁니다. 추가/정정이 필요하면 거래 입력에서 직접 추가하세요.`
+    );
+  }
+
+  const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number }> = [];
+
+  const filledBuyQty = buyLadder
+    .filter((tier) => judgeBuyFill(tier.limitPrice, closePrice))
+    .reduce((sum, tier) => sum + Math.max(Math.round(tier.qty), 0), 0);
+  if (filledBuyQty > 0) {
+    const buyKind: TradeKind = tValue <= 0 ? "first" : "full";
+    planned.push({ side: "buy", tradeKind: buyKind, qty: filledBuyQty, price: closePrice });
+  }
+
+  if (sellPlan) {
+    if (judgeSellFill(sellPlan.quarterSell.limitPrice, closePrice) && sellPlan.quarterSell.qty > 0) {
+      planned.push({
+        side: "sell",
+        tradeKind: "quarterSell",
+        qty: sellPlan.quarterSell.qty,
+        price: closePrice,
+      });
+    }
+    if (
+      judgeLimitSellFill(sellPlan.remainderSell.limitPrice, closePrice, dayHigh) &&
+      sellPlan.remainderSell.qty > 0
+    ) {
+      planned.push({
+        side: "sell",
+        tradeKind: "remainderSell",
+        qty: sellPlan.remainderSell.qty,
+        price: sellPlan.remainderSell.limitPrice,
+      });
+    }
+  }
+
+  if (planned.length === 0) {
+    throw new Error("최근 종가 기준으로 자동 기록할 체결 내역이 없습니다 (사다리/매도 지정가에 종가가 닿지 않았습니다).");
+  }
+
+  for (const p of planned) {
+    const fd = new FormData();
+    fd.set("strategyId", String(strategyId));
+    fd.set("side", p.side);
+    fd.set("tradeKind", p.tradeKind);
+    fd.set("price", String(p.price));
+    fd.set("qty", String(p.qty));
+    fd.set("date", date);
+    await recordTrade(fd);
+  }
 }

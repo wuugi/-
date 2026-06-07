@@ -250,7 +250,18 @@ export function getSellPlan(ticker: Ticker, avgPrice: number, qty: number, starP
   };
 }
 
-/** 지정가 매도 자동 판단: 종가가 지정가 이상으로 마감되면 매도 체결로 본다 */
+/** LOC 매도 자동 판단: 종가가 지정가 이상으로 마감되면 매도 체결로 본다 (LOC는 종가에 체결) */
 export function judgeSellFill(limitPrice: number, closePrice: number): boolean {
   return closePrice >= limitPrice;
+}
+
+/**
+ * 일반 지정가 매도 자동 판단 (잔여 지정가 매도용).
+ * 지정가 주문은 종가와 무관하게 장중에 가격이 지정가에 닿으면 그 시점에 체결될 수 있다.
+ * 장중 고가 데이터가 있으면 "고가 ≥ 지정가"로 장중 체결 가능성까지 포함해 판단하고,
+ * 없으면(수동 입력 등) 종가 기준으로만 보수적으로 판단한다.
+ */
+export function judgeLimitSellFill(limitPrice: number, closePrice: number, dayHigh?: number | null): boolean {
+  if (dayHigh != null) return dayHigh >= limitPrice;
+  return judgeSellFill(limitPrice, closePrice);
 }

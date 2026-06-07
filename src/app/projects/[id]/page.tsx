@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { recordTrade, updateCrashProtection } from "../../actions";
+import { autoRecordTodayFills, recordTrade, updateCrashProtection } from "../../actions";
 import { fetchAndRecordPrice, recordPriceSnapshot } from "../../actions-price";
 import {
   getCurrentCycle,
@@ -22,6 +22,7 @@ import {
   getStarPercent,
   getStarPoint,
   judgeBuyFill,
+  judgeLimitSellFill,
   judgeSellFill,
   type CrashProtectionPct,
   type LadderTier,
@@ -230,10 +231,18 @@ export default async function ProjectDashboard({
                     <p>
                       <span className="font-semibold">잔여 지정가 매도 (보유의 3/4)</span>: 평단 + {sellPlan.remainderSell.fixedRate}%
                       = ${fmt(sellPlan.remainderSell.limitPrice)} 지정가 매도 {fmt(Math.round(sellPlan.remainderSell.qty), 0)}주 · T 변화 없음
-                      <SellFillBadge limitPrice={sellPlan.remainderSell.limitPrice} closePrice={latestPrice.closePrice} />
+                      <LimitSellFillBadge
+                        limitPrice={sellPlan.remainderSell.limitPrice}
+                        closePrice={latestPrice.closePrice}
+                        dayHigh={latestPrice.dayHigh ?? null}
+                      />
                     </p>
                     <p className="text-xs text-zinc-500">
-                      지정가 주문은 장 시작 전(프리마켓~정규장~애프터마켓을 포괄)에 갱신해 거는 것을 권장합니다.
+                      지정가 주문은 장 시작 전(프리마켓~정규장~애프터마켓을 포괄)에 갱신해 거는 것을 권장합니다. 잔여 지정가
+                      매도는 일반 지정가 주문이라 종가와 무관하게 장중에 가격이 닿으면 그 시점에 체결될 수 있습니다 —{" "}
+                      {latestPrice.dayHigh != null
+                        ? "장중 고가 데이터를 반영해 체결 가능성을 판단합니다."
+                        : "장중 고가 데이터가 없어 종가만으로 보수적으로 판단하므로, 실제로는 표시보다 더 일찍/자주 체결됐을 수 있습니다. 정확한 체결은 증권사 체결 내역을 거래 입력에서 직접 보정해 주세요."}
                     </p>
                   </div>
                 ) : (
@@ -354,7 +363,22 @@ export default async function ProjectDashboard({
       {/* 거래 입력 폼 + 최근 체결 내역 */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-          <h2 className="mb-3 text-lg font-semibold">거래 입력</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">거래 입력</h2>
+            <form action={autoRecordTodayFills}>
+              <input type="hidden" name="strategyId" value={strategy.id} />
+              <button
+                type="submit"
+                className="whitespace-nowrap rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium dark:border-zinc-700"
+              >
+                최근 종가 기준 자동 기록
+              </button>
+            </form>
+          </div>
+          <p className="mb-3 -mt-1 text-xs text-zinc-500">
+            제안된 사다리/매도 지정가에 종가가 닿으면 자동으로 체결로 판단해 기록합니다. 자동 판단이 실제 체결과 다르면
+            아래에서 직접 입력해 보정하세요.
+          </p>
           <form action={recordTrade} className="flex flex-col gap-3 text-sm">
             <input type="hidden" name="strategyId" value={strategy.id} />
             <div className="flex gap-3">
@@ -483,6 +507,30 @@ function SellFillBadge({ limitPrice, closePrice }: { limitPrice: number; closePr
       }`}
     >
       {filled ? "체결 (종가 ≥ 지정가)" : "미체결"}
+    </span>
+  );
+}
+
+function LimitSellFillBadge({
+  limitPrice,
+  closePrice,
+  dayHigh,
+}: {
+  limitPrice: number;
+  closePrice: number;
+  dayHigh: number | null;
+}) {
+  const filled = judgeLimitSellFill(limitPrice, closePrice, dayHigh);
+  const basis = dayHigh != null ? "장중 고가 ≥ 지정가" : "종가 ≥ 지정가 (고가 데이터 없음)";
+  return (
+    <span
+      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
+        filled
+          ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+          : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+      }`}
+    >
+      {filled ? `체결 가능성 (${basis})` : "미체결"}
     </span>
   );
 }
