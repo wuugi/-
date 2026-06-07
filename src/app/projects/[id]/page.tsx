@@ -31,10 +31,9 @@ import {
   type SpecialBuyPlan,
   type Ticker,
 } from "@/lib/lao-strategy";
+import { isUsMarketTradingDay, todayIsoKst } from "@/lib/market-date";
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayIso = todayIsoKst;
 
 function fmt(n: number, digits = 2) {
   return n.toLocaleString("ko-KR", { maximumFractionDigits: digits });
@@ -71,6 +70,7 @@ export default async function ProjectDashboard({
   const sortedPrices = [...recentPrices].sort((a, b) => (a.date < b.date ? -1 : 1));
   const latestPrice = sortedPrices.at(-1);
   const prevClose = latestPrice?.closePrice ?? 0;
+  const latestPriceIsTradingDay = latestPrice ? isUsMarketTradingDay(latestPrice.date) : false;
 
   const phase = getPhase(tValue, strategy.splitCount);
   const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
@@ -163,6 +163,11 @@ export default async function ProjectDashboard({
           {!latestPrice ? (
             <p className="text-sm text-zinc-500">
               종가 데이터가 없습니다. 아래에서 오늘 종가를 입력하면 추천이 계산됩니다.
+            </p>
+          ) : !latestPriceIsTradingDay ? (
+            <p className="text-sm text-zinc-500">
+              최근 입력된 종가 날짜({latestPrice.date})는 미국 증시 휴장일(주말/공휴일)이라 체결 여부를 확인하지
+              않습니다. 다음 개장일의 종가가 입력되면 추천과 체결 판정이 표시됩니다.
             </p>
           ) : (
             <div className="flex flex-col gap-4 text-sm">

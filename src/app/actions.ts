@@ -5,6 +5,7 @@ import { strategies, cycles, trades, holdingsDaily, priceSnapshots } from "@/db/
 import { and, eq, asc, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isUsMarketTradingDay, todayIsoKst } from "@/lib/market-date";
 import {
   applyTDelta,
   detectCrashBigNumberBuy,
@@ -30,9 +31,7 @@ import {
 const BUY_KINDS: TradeKind[] = ["first", "full", "half", "extra"];
 const SELL_KINDS: TradeKind[] = ["quarterSell", "remainderSell"];
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayIso = todayIsoKst;
 
 /** 새 전략을 등록하고 1번째 사이클(T=0)을 시작한다 */
 export async function createStrategy(formData: FormData) {
@@ -285,6 +284,11 @@ export async function autoRecordTodayFills(formData: FormData) {
   const tValue = latestHoldings?.tValue ?? 0;
 
   const date = latestPrice.date;
+
+  if (!isUsMarketTradingDay(date)) {
+    throw new Error(`${date}는 미국 증시 휴장일(주말/공휴일)이라 체결 여부를 자동 기록할 수 없습니다.`);
+  }
+
   const closePrice = latestPrice.closePrice;
   const dayHigh = latestPrice.dayHigh ?? null;
   const prevClose = closePrice;
