@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { NewProjectModal } from "./new-project-modal";
+import { DeleteProjectButton } from "./delete-project-button";
 import { getStrategySummaries } from "@/lib/queries";
 import { getPhase, getStarPercent, type Ticker } from "@/lib/lao-strategy";
 
@@ -39,18 +40,27 @@ export default async function Home() {
               const phase = getPhase(tValue, strategy.splitCount);
               const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
               const inProgress = currentCycle?.status === "진행중";
+              const displayName = strategy.name?.trim() || strategy.ticker;
 
               return (
-                <li key={strategy.id}>
+                <li key={strategy.id} className="group relative">
                   <Link
                     href={`/projects/${strategy.id}`}
                     className="block h-full rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent)]/40 hover:shadow-md dark:border-zinc-800"
                   >
-                    <div className="mb-3 flex items-center justify-between">
-                      <h2 className="text-lg font-semibold">{strategy.ticker}</h2>
-                      <span className="rounded-full bg-[var(--accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
-                        {strategy.splitCount}분할
-                      </span>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <h2 className="truncate text-lg font-semibold">{displayName}</h2>
+                        {strategy.name?.trim() ? (
+                          <p className="truncate text-xs text-zinc-500">{strategy.ticker}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <span className="rounded-full bg-[var(--accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
+                          {strategy.splitCount}분할
+                        </span>
+                        <DeleteProjectButton strategyId={strategy.id} label={displayName} />
+                      </div>
                     </div>
                     <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
                       <DataRow label="원금" value={`$${fmt(strategy.principal, 0)}`} />

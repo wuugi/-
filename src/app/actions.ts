@@ -33,6 +33,7 @@ function todayIso() {
 
 /** 새 전략을 등록하고 1번째 사이클(T=0)을 시작한다 */
 export async function createStrategy(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
   const ticker = String(formData.get("ticker") ?? "").trim();
   const principal = Number(formData.get("principal"));
   const splitCount = Number(formData.get("splitCount"));
@@ -53,7 +54,7 @@ export async function createStrategy(formData: FormData) {
 
   const [strategy] = await db
     .insert(strategies)
-    .values({ ticker, principal, splitCount, crashProtectionPct, createdAt: todayIso() })
+    .values({ name: name || null, ticker, principal, splitCount, crashProtectionPct, createdAt: todayIso() })
     .returning();
 
   await db.insert(cycles).values({
@@ -95,6 +96,22 @@ export async function updateCrashProtection(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath(`/projects/${strategyId}`);
+}
+
+/** 프로젝트(전략)와 연관된 사이클/체결/보유현황 기록을 모두 삭제한다 */
+export async function deleteStrategy(formData: FormData) {
+  const strategyId = Number(formData.get("strategyId"));
+  if (!strategyId) {
+    throw new Error("전략을 찾을 수 없습니다.");
+  }
+
+  await db.delete(trades).where(eq(trades.strategyId, strategyId));
+  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
+  await db.delete(cycles).where(eq(cycles.strategyId, strategyId));
+  await db.delete(strategies).where(eq(strategies.id, strategyId));
+
+  revalidatePath("/");
+  redirect("/");
 }
 
 /**

@@ -3,6 +3,7 @@ import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 // 전략 설정 (종목별 무한매수법 운용 정보)
 export const strategies = sqliteTable("strategies", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name"), // 사용자가 정한 프로젝트 이름 (없으면 종목명을 표시)
   ticker: text("ticker").notNull(), // 'TQQQ' | 'SOXL'
   principal: real("principal").notNull(), // 원금
   splitCount: integer("split_count").notNull(), // 분할 수 (20 또는 40)

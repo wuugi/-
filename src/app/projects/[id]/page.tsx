@@ -100,9 +100,16 @@ export default async function ProjectDashboard({
         </Link>
       </div>
       <header className="mb-8 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-        <h1 className="text-xl font-bold text-[var(--accent)] sm:text-2xl">
-          {strategy.ticker} 무한매수법 대시보드 (라오어 4.0)
-        </h1>
+        <div>
+          <h1 className="text-xl font-bold text-[var(--accent)] sm:text-2xl">
+            {strategy.name?.trim() || `${strategy.ticker} 무한매수법 대시보드`}
+          </h1>
+          {strategy.name?.trim() ? (
+            <p className="mt-0.5 text-sm text-zinc-500">{strategy.ticker} 무한매수법 대시보드 (라오어 4.0)</p>
+          ) : (
+            <p className="mt-0.5 text-sm text-zinc-500">라오어 4.0</p>
+          )}
+        </div>
         <span className="text-sm text-zinc-500">원금 ${fmt(strategy.principal, 0)}</span>
       </header>
 

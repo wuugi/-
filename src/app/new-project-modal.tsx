@@ -38,6 +38,16 @@ export function NewProjectModal() {
             onSubmit={() => dialogRef.current?.close()}
           >
             <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">프로젝트 이름 (선택)</span>
+              <input
+                type="text"
+                name="name"
+                maxLength={50}
+                placeholder="예: TQQQ 40분할 본계좌"
+                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
               <span className="text-sm font-medium">종목</span>
               <select
                 name="ticker"
