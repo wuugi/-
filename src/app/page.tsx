@@ -157,7 +157,7 @@ export default async function Home() {
             </div>
           )}
 
-          <form action={recordPriceSnapshot} className="mt-4 flex items-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+          <form action={recordPriceSnapshot} className="mt-4 flex flex-wrap items-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
             <input type="hidden" name="ticker" value={strategy.ticker} />
             <label className="flex flex-1 flex-col gap-1 text-sm">
               <span>날짜</span>
@@ -180,7 +180,7 @@ export default async function Home() {
                 className="rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
               />
             </label>
-            <button type="submit" className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background">
+            <button type="submit" className="shrink-0 whitespace-nowrap rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background">
               종가 입력
             </button>
           </form>
