@@ -7,6 +7,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   applyTDelta,
+  detectCrashBigNumberBuy,
+  detectSurgeForcedFirstBuy,
   getDailyBuyBudget,
   getFirstBuyLadder,
   getFirstHalfLadder,
@@ -20,6 +22,7 @@ import {
   judgeSellFill,
   type CrashProtectionPct,
   type LadderTier,
+  type SpecialBuyPlan,
   type Ticker,
   type TradeKind,
 } from "@/lib/lao-strategy";
@@ -126,6 +129,7 @@ export async function recordTrade(formData: FormData) {
   const price = Number(formData.get("price"));
   const qty = Number(formData.get("qty"));
   const date = String(formData.get("date") || todayIso());
+  const note = String(formData.get("note") ?? "").trim() || null;
 
   if (!strategyId || (side !== "buy" && side !== "sell")) {
     throw new Error("입력값이 올바르지 않습니다.");
@@ -172,6 +176,7 @@ export async function recordTrade(formData: FormData) {
     tradeKind,
     tBefore,
     tAfter,
+    note,
   });
 
   // 전체 체결 내역으로 평단가/보유수량/예수금 재계산
@@ -290,13 +295,19 @@ export async function autoRecordTodayFills(formData: FormData) {
   const dailyBudget = getDailyBuyBudget(tValue, strategy.splitCount, strategy.principal, cashBalance);
 
   let buyLadder: LadderTier[] = [];
+  let crashBigNumber: SpecialBuyPlan | null = null;
   if (prevClose > 0) {
     if (tValue <= 0) {
       buyLadder = getFirstBuyLadder(prevClose, dailyBudget, crashProtectionPct);
-    } else if (phase === "전반전" && avgPrice > 0 && starPoint !== null) {
-      buyLadder = getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct);
     } else if (starPoint !== null) {
-      buyLadder = getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
+      // 폭락으로 별지점과 종가의 괴리가 폭락률 보호 구간을 넘으면 정상 사다리 대신 큰수 매수로 통합
+      crashBigNumber = detectCrashBigNumberBuy(prevClose, starPoint, dailyBudget, crashProtectionPct);
+      if (!crashBigNumber) {
+        buyLadder =
+          phase === "전반전" && avgPrice > 0
+            ? getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct)
+            : getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
+      }
     }
   }
 
@@ -318,14 +329,37 @@ export async function autoRecordTodayFills(formData: FormData) {
     );
   }
 
-  const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number }> = [];
+  const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number; note?: string }> = [];
 
-  const filledBuyQty = buyLadder
-    .filter((tier) => judgeBuyFill(tier.limitPrice, closePrice))
-    .reduce((sum, tier) => sum + Math.max(Math.round(tier.qty), 0), 0);
+  let filledBuyQty = 0;
+  let buyNote: string | undefined;
+
+  if (crashBigNumber) {
+    // 폭락 대응 큰수 매수: 종가가 큰수 지정가 이하로 마감되면 통합 LOC 매수로 체결
+    if (judgeBuyFill(crashBigNumber.limitPrice, closePrice) && crashBigNumber.qty > 0) {
+      filledBuyQty = crashBigNumber.qty;
+      buyNote = crashBigNumber.note;
+    }
+  } else {
+    filledBuyQty = buyLadder
+      .filter((tier) => judgeBuyFill(tier.limitPrice, closePrice))
+      .reduce((sum, tier) => sum + Math.max(Math.round(tier.qty), 0), 0);
+
+    // 갭상승 대응: 첫 매수(T=0) 사다리의 가장 높은 큰수보다 종가가 더 높게 마감해
+    // 정상 사다리로는 하나도 체결되지 않는다면, "처음 매수는 무조건 매수" 원칙에 따라
+    // 종가 기준 전액 매수로 자동 보정한다.
+    if (tValue <= 0 && filledBuyQty === 0 && buyLadder.length > 0) {
+      const surgeBuy = detectSurgeForcedFirstBuy(closePrice, buyLadder, dailyBudget);
+      if (surgeBuy) {
+        filledBuyQty = surgeBuy.qty;
+        buyNote = surgeBuy.note;
+      }
+    }
+  }
+
   if (filledBuyQty > 0) {
     const buyKind: TradeKind = tValue <= 0 ? "first" : "full";
-    planned.push({ side: "buy", tradeKind: buyKind, qty: filledBuyQty, price: closePrice });
+    planned.push({ side: "buy", tradeKind: buyKind, qty: filledBuyQty, price: closePrice, note: buyNote });
   }
 
   if (sellPlan) {
@@ -362,6 +396,7 @@ export async function autoRecordTodayFills(formData: FormData) {
     fd.set("price", String(p.price));
     fd.set("qty", String(p.qty));
     fd.set("date", date);
+    if (p.note) fd.set("note", p.note);
     await recordTrade(fd);
   }
 }

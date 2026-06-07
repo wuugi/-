@@ -51,6 +51,7 @@ export const trades = sqliteTable("trades", {
   tradeKind: text("trade_kind").notNull(),
   tBefore: real("t_before").notNull(), // 체결 전 T값
   tAfter: real("t_after").notNull(), // 체결 후 T값
+  note: text("note"), // 특이사항 태그 (예: 폭락 대응 큰수 매수, 갭상승 대응 큰수 매수 등 자동 판단 사유)
 });
 
 // 일별 보유 현황 스냅샷 (평단가/보유수량/예수금/T값)

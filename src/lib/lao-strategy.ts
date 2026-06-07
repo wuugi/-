@@ -212,6 +212,78 @@ export function judgeBuyFill(limitPrice: number, closePrice: number): boolean {
   return closePrice <= limitPrice;
 }
 
+export interface SpecialBuyPlan {
+  /** 통합 매수 LOC 지정가 */
+  limitPrice: number;
+  /** 통합 매수 수량 */
+  qty: number;
+  /** 자동 판단 사유 (체결 기록의 "특이사항" 태그로 남는다) */
+  note: string;
+}
+
+/**
+ * 폭락 대응 "큰수 매수" 자동 판단 (라오어 4.0 카페 공지 <큰수 매수 정리> 기준).
+ *
+ * 사이클 중간에 폭락으로 별지점/평단과 전일 종가의 괴리가 폭락률 보호 구간(%)을 넘으면,
+ * 별지점 근처에 거는 정상 사다리 가격은 전일 종가와 너무 멀어 증권사 시스템에서
+ * 주문 오류로 거부될 수 있다. 이런 경우 "별가격 아래에서 무조건 매수"를 의도하기 위해
+ * 사다리 예산 전체를 전일 종가보다 적당히 큰 수(괴리율의 절반, 5~20% 사이)만큼
+ * 위에 잡은 단일 LOC 매수로 통합한다. 괴리가 클수록 더 큰 수를, 작을수록 더 작은 수를
+ * 선택해 거부 범위를 피하면서도 별지점 아래 체결을 보장한다.
+ */
+export function detectCrashBigNumberBuy(
+  prevClose: number,
+  targetPrice: number,
+  dailyBudget: number,
+  crashProtectionPct: CrashProtectionPct
+): SpecialBuyPlan | null {
+  if (prevClose <= 0 || targetPrice <= 0 || dailyBudget <= 0) return null;
+
+  const gapPct = ((targetPrice - prevClose) / prevClose) * 100;
+  if (gapPct <= crashProtectionPct) return null;
+
+  const bigNumberPct = Math.min(20, Math.max(5, Number((gapPct / 2).toFixed(2))));
+  const limitPrice = Number((prevClose * (1 + bigNumberPct / 100)).toFixed(2));
+  const qty = roundQty(dailyBudget / limitPrice);
+  if (qty <= 0) return null;
+
+  return {
+    limitPrice,
+    qty,
+    note: `[특이사항] 폭락 대응 큰수 매수 — 별지점 대비 종가 괴리 ${gapPct.toFixed(1)}%가 폭락률 보호 구간(${crashProtectionPct}%)을 초과해, 사다리 매수를 종가 +${bigNumberPct}% 큰수(${limitPrice}) LOC 매수로 통합 체결`,
+  };
+}
+
+/**
+ * 갭상승 대응 "큰수 매수" 자동 판단.
+ *
+ * 새 사이클 시작(T=0)의 큰수 사다리는 "처음 매수는 무조건 매수"를 의도하므로,
+ * 종가가 사다리의 가장 높은 지정가(보통 전일 종가 +12%)보다도 더 높게 마감되면
+ * (예상보다 큰 갭상승) 정상 사다리로는 그 의도가 깨진다. 이 경우 종가 기준으로
+ * 일일 매수금 전액을 단일 매수로 체결한 것으로 간주해 "처음 매수는 무조건 매수"
+ * 원칙을 지킨다.
+ */
+export function detectSurgeForcedFirstBuy(
+  closePrice: number,
+  ladder: LadderTier[],
+  dailyBudget: number
+): SpecialBuyPlan | null {
+  if (ladder.length === 0 || closePrice <= 0 || dailyBudget <= 0) return null;
+
+  const maxLimit = Math.max(...ladder.map((t) => t.limitPrice));
+  if (closePrice <= maxLimit) return null;
+
+  const gapPct = ((closePrice - maxLimit) / maxLimit) * 100;
+  const qty = roundQty(dailyBudget / closePrice);
+  if (qty <= 0) return null;
+
+  return {
+    limitPrice: closePrice,
+    qty,
+    note: `[특이사항] 갭상승 대응 큰수 매수 — 예상 큰수(${maxLimit})보다 종가가 ${gapPct.toFixed(1)}% 더 높게 마감해, "첫 매수는 무조건 매수" 원칙에 따라 종가(${closePrice}) 기준 전액 매수로 체결`,
+  };
+}
+
 export interface SellPlan {
   /** 쿼터매도(보유의 1/4): 별지점 LOC 매도, T = 직전T * 0.75 */
   quarterSell: {

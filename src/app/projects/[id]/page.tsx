@@ -11,6 +11,8 @@ import {
   getTradesByStrategy,
 } from "@/lib/queries";
 import {
+  detectCrashBigNumberBuy,
+  detectSurgeForcedFirstBuy,
   getBuyTriggerPrice,
   getDailyBuyBudget,
   getFirstBuyLadder,
@@ -26,6 +28,7 @@ import {
   judgeSellFill,
   type CrashProtectionPct,
   type LadderTier,
+  type SpecialBuyPlan,
   type Ticker,
 } from "@/lib/lao-strategy";
 
@@ -77,15 +80,25 @@ export default async function ProjectDashboard({
   const dailyBudget = getDailyBuyBudget(tValue, strategy.splitCount, strategy.principal, cashBalance);
 
   let buyLadder: LadderTier[] = [];
+  let crashBigNumber: SpecialBuyPlan | null = null;
   if (prevClose > 0) {
     if (tValue <= 0) {
       buyLadder = getFirstBuyLadder(prevClose, dailyBudget, crashProtectionPct);
-    } else if (phase === "전반전" && avgPrice > 0 && starPoint !== null) {
-      buyLadder = getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct);
     } else if (starPoint !== null) {
-      buyLadder = getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
+      crashBigNumber = detectCrashBigNumberBuy(prevClose, starPoint, dailyBudget, crashProtectionPct);
+      if (!crashBigNumber) {
+        buyLadder =
+          phase === "전반전" && avgPrice > 0
+            ? getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct)
+            : getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
+      }
     }
   }
+
+  const surgeForcedBuy =
+    !crashBigNumber && tValue <= 0 && latestPrice && buyLadder.length > 0
+      ? detectSurgeForcedFirstBuy(latestPrice.closePrice, buyLadder, dailyBudget)
+      : null;
 
   const sellPlan =
     tValue >= 1 && qty > 0 && avgPrice > 0 && starPoint !== null
@@ -166,61 +179,98 @@ export default async function ProjectDashboard({
               </div>
               <div>
                 <h3 className="mb-1 font-medium">
-                  {tValue <= 0
-                    ? "첫 매수 LOC 사다리"
-                    : phase === "전반전"
-                      ? "전반전 매수 사다리 (별지점 LOC + 평단가 LOC)"
-                      : "후반전 매수 사다리 (별지점 LOC 중심)"}{" "}
+                  {crashBigNumber
+                    ? "폭락 대응 큰수 매수 (자동 전환)"
+                    : tValue <= 0
+                      ? "첫 매수 LOC 사다리"
+                      : phase === "전반전"
+                        ? "전반전 매수 사다리 (별지점 LOC + 평단가 LOC)"
+                        : "후반전 매수 사다리 (별지점 LOC 중심)"}{" "}
                   (전일 종가 ${fmt(prevClose)} 기준)
                 </h3>
-                <div className="overflow-x-auto rounded">
-                <table className="w-full min-w-[480px] overflow-hidden text-xs">
-                  <thead className="bg-[var(--accent-soft)]/60 text-left">
-                    <tr>
-                      <th className="whitespace-nowrap px-2 py-1.5">단계</th>
-                      <th className="whitespace-nowrap px-2 py-1.5">사유</th>
-                      <th className="whitespace-nowrap px-2 py-1.5">LOC 지정가</th>
-                      <th className="whitespace-nowrap px-2 py-1.5">매수 수량</th>
-                      <th className="whitespace-nowrap px-2 py-1.5">자동 판단</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {buyLadder.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-2 py-3 text-center text-zinc-500">
-                          매수 사다리를 계산할 수 없습니다 (평단가 또는 종가 데이터 필요).
-                        </td>
-                      </tr>
-                    ) : (
-                      buyLadder.map((tier) => {
-                        const filled = judgeBuyFill(tier.limitPrice, latestPrice.closePrice);
-                        return (
-                          <tr key={tier.level} className="border-t border-zinc-200 dark:border-zinc-800">
-                            <td className="whitespace-nowrap px-2 py-1.5">{tier.level}</td>
-                            <td className="whitespace-nowrap px-2 py-1.5">{tier.label}</td>
-                            <td className="whitespace-nowrap px-2 py-1.5">${fmt(tier.limitPrice)}</td>
-                            <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(tier.qty), 0)}주</td>
-                            <td className="px-2 py-1.5">
-                              <span
-                                className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  filled
-                                    ? "bg-[var(--positive-soft)] text-[var(--positive)]"
-                                    : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-                                }`}
-                              >
-                                {filled ? "체결 (종가 ≤ 지정가)" : "미체결"}
-                              </span>
+
+                {crashBigNumber ? (
+                  <div className="flex flex-col gap-2 rounded-xl bg-[var(--negative-soft)] px-3 py-2 text-xs">
+                    <p>
+                      <span className="rounded-full bg-[var(--negative)] px-2 py-0.5 font-medium text-white">특이사항</span>{" "}
+                      별지점과 종가의 괴리가 폭락률 보호 구간({crashProtectionPct}%)을 초과해, 정상 사다리 대신 단일 큰수
+                      LOC 매수로 자동 전환되었습니다.
+                    </p>
+                    <table className="w-full min-w-[420px] overflow-hidden text-xs">
+                      <thead className="bg-white/40 text-left dark:bg-black/20">
+                        <tr>
+                          <th className="whitespace-nowrap px-2 py-1.5">큰수 LOC 지정가</th>
+                          <th className="whitespace-nowrap px-2 py-1.5">통합 매수 수량</th>
+                          <th className="whitespace-nowrap px-2 py-1.5">자동 판단</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-t border-white/40 dark:border-black/20">
+                          <td className="whitespace-nowrap px-2 py-1.5">${fmt(crashBigNumber.limitPrice)}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(crashBigNumber.qty), 0)}주</td>
+                          <td className="px-2 py-1.5">
+                            <BuyFillBadge limitPrice={crashBigNumber.limitPrice} closePrice={latestPrice.closePrice} />
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <p>{crashBigNumber.note.replace("[특이사항] ", "")}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto rounded">
+                    <table className="w-full min-w-[480px] overflow-hidden text-xs">
+                      <thead className="bg-[var(--accent-soft)]/60 text-left">
+                        <tr>
+                          <th className="whitespace-nowrap px-2 py-1.5">단계</th>
+                          <th className="whitespace-nowrap px-2 py-1.5">사유</th>
+                          <th className="whitespace-nowrap px-2 py-1.5">LOC 지정가</th>
+                          <th className="whitespace-nowrap px-2 py-1.5">매수 수량</th>
+                          <th className="whitespace-nowrap px-2 py-1.5">자동 판단</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {buyLadder.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-2 py-3 text-center text-zinc-500">
+                              매수 사다리를 계산할 수 없습니다 (평단가 또는 종가 데이터 필요).
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-                </div>
-                <p className="mt-1 text-xs text-zinc-500">
-                  최근 입력된 종가를 기준으로 각 단계의 LOC 매수 체결 여부를 자동 판단합니다 (종가 ≤ 지정가 → 체결).
-                </p>
+                        ) : (
+                          buyLadder.map((tier) => (
+                            <tr key={tier.level} className="border-t border-zinc-200 dark:border-zinc-800">
+                              <td className="whitespace-nowrap px-2 py-1.5">{tier.level}</td>
+                              <td className="whitespace-nowrap px-2 py-1.5">{tier.label}</td>
+                              <td className="whitespace-nowrap px-2 py-1.5">${fmt(tier.limitPrice)}</td>
+                              <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(tier.qty), 0)}주</td>
+                              <td className="px-2 py-1.5">
+                                <BuyFillBadge limitPrice={tier.limitPrice} closePrice={latestPrice.closePrice} />
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      최근 입력된 종가를 기준으로 각 단계의 LOC 매수 체결 여부를 자동 판단합니다 (종가 ≤ 지정가 → 체결).
+                    </p>
+                  </>
+                )}
+
+                {surgeForcedBuy ? (
+                  <div className="mt-2 flex flex-col gap-1 rounded-xl bg-[var(--negative-soft)] px-3 py-2 text-xs">
+                    <p>
+                      <span className="rounded-full bg-[var(--negative)] px-2 py-0.5 font-medium text-white">특이사항</span>{" "}
+                      예상보다 큰 갭상승으로 큰수 사다리가 체결되지 않아, &quot;첫 매수는 무조건 매수&quot; 원칙에 따라
+                      종가 기준 전액 매수로 자동 보정되었습니다.
+                    </p>
+                    <p>
+                      종가 ${fmt(latestPrice.closePrice)} 기준 {fmt(Math.round(surgeForcedBuy.qty), 0)}주 매수로 처리됩니다.{" "}
+                      {surgeForcedBuy.note.replace("[특이사항] ", "")}
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <div>
                 <h3 className="mb-1 font-medium">매도 계획 (2회차/T≥1부터 매일 지정가 갱신)</h3>
@@ -483,6 +533,11 @@ export default async function ProjectDashboard({
                   <span className="text-xs text-zinc-500">
                     T값 {fmt(t.tBefore, 4)} → {fmt(t.tAfter, 4)}
                   </span>
+                  {t.note ? (
+                    <span className="mt-0.5 inline-block w-fit rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]">
+                      특이사항: {t.note}
+                    </span>
+                  ) : null}
                 </li>
               ))
             )}
@@ -500,6 +555,21 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <p className="text-xs text-zinc-500">{label}</p>
       <p className="mt-1 text-lg font-semibold text-[var(--accent)]">{value}</p>
     </div>
+  );
+}
+
+function BuyFillBadge({ limitPrice, closePrice }: { limitPrice: number; closePrice: number }) {
+  const filled = judgeBuyFill(limitPrice, closePrice);
+  return (
+    <span
+      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
+        filled
+          ? "bg-[var(--positive-soft)] text-[var(--positive)]"
+          : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+      }`}
+    >
+      {filled ? "체결 (종가 ≤ 지정가)" : "미체결"}
+    </span>
   );
 }
 
