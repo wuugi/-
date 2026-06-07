@@ -19,17 +19,24 @@ export async function createStrategy(formData: FormData) {
   const ticker = String(formData.get("ticker") ?? "").trim();
   const principal = Number(formData.get("principal"));
   const splitCount = Number(formData.get("splitCount"));
+  const crashProtectionPct = Number(formData.get("crashProtectionPct"));
 
-  if (!ticker || !Number.isFinite(principal) || principal <= 0) {
-    throw new Error("종목과 원금을 올바르게 입력하세요.");
+  if (!["TQQQ", "SOXL"].includes(ticker)) {
+    throw new Error("종목은 TQQQ 또는 SOXL이어야 합니다.");
+  }
+  if (!Number.isFinite(principal) || principal <= 0) {
+    throw new Error("원금을 올바르게 입력하세요.");
   }
   if (![20, 40].includes(splitCount)) {
     throw new Error("분할 카운트는 20 또는 40이어야 합니다.");
   }
+  if (![20, 30].includes(crashProtectionPct)) {
+    throw new Error("폭락률 보호는 20% 또는 30%여야 합니다.");
+  }
 
   const [strategy] = await db
     .insert(strategies)
-    .values({ ticker, principal, splitCount, createdAt: todayIso() })
+    .values({ ticker, principal, splitCount, crashProtectionPct, createdAt: todayIso() })
     .returning();
 
   await db.insert(cycles).values({
@@ -50,6 +57,27 @@ export async function createStrategy(formData: FormData) {
 
   revalidatePath("/");
   redirect(`/projects/${strategy.id}`);
+}
+
+/** 폭락률 보호 구간(20%/30%)을 대시보드에서 수정한다 */
+export async function updateCrashProtection(formData: FormData) {
+  const strategyId = Number(formData.get("strategyId"));
+  const crashProtectionPct = Number(formData.get("crashProtectionPct"));
+
+  if (!strategyId) {
+    throw new Error("전략을 찾을 수 없습니다.");
+  }
+  if (![20, 30].includes(crashProtectionPct)) {
+    throw new Error("폭락률 보호는 20% 또는 30%여야 합니다.");
+  }
+
+  await db
+    .update(strategies)
+    .set({ crashProtectionPct })
+    .where(eq(strategies.id, strategyId));
+
+  revalidatePath("/");
+  revalidatePath(`/projects/${strategyId}`);
 }
 
 /**

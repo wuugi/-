@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { recordTrade } from "../../actions";
+import { recordTrade, updateCrashProtection } from "../../actions";
 import { recordPriceSnapshot } from "../../actions-price";
 import {
   getCurrentCycle,
@@ -23,6 +23,7 @@ import {
   getStarPoint,
   judgeBuyFill,
   judgeSellFill,
+  type CrashProtectionPct,
   type LadderTier,
   type Ticker,
 } from "@/lib/lao-strategy";
@@ -48,6 +49,7 @@ export default async function ProjectDashboard({
   if (!strategy) notFound();
 
   const ticker = strategy.ticker as Ticker;
+  const crashProtectionPct = strategy.crashProtectionPct as CrashProtectionPct;
 
   const [currentCycle, holdings, allCycles, allTrades, recentPrices] = await Promise.all([
     getCurrentCycle(strategy.id),
@@ -76,11 +78,11 @@ export default async function ProjectDashboard({
   let buyLadder: LadderTier[] = [];
   if (prevClose > 0) {
     if (tValue <= 0) {
-      buyLadder = getFirstBuyLadder(prevClose, dailyBudget);
+      buyLadder = getFirstBuyLadder(prevClose, dailyBudget, crashProtectionPct);
     } else if (phase === "전반전" && avgPrice > 0 && starPoint !== null) {
-      buyLadder = getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget);
+      buyLadder = getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct);
     } else if (starPoint !== null) {
-      buyLadder = getSecondHalfLadder(starPoint, prevClose, dailyBudget);
+      buyLadder = getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
     }
   }
 
@@ -104,13 +106,33 @@ export default async function ProjectDashboard({
       </header>
 
       {/* 현재 상태 요약 */}
-      <section className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <section className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label="사이클" value={currentCycle ? `${currentCycle.cycleNo}회차` : "-"} />
         <StatCard label="T값" value={fmt(tValue, 4)} />
         <StatCard label="전후반전" value={phase} />
         <StatCard label="별%" value={`${fmt(starPercent)}%`} />
         <StatCard label="평단가" value={avgPrice > 0 ? `$${fmt(avgPrice)}` : "-"} />
-        <StatCard label="보유수량" value={qty > 0 ? fmt(qty, 4) : "0"} />
+        <StatCard label="보유수량" value={qty > 0 ? fmt(Math.round(qty), 0) : "0"} />
+      </section>
+
+      {/* 폭락률 보호 구간 표시 + 수정 */}
+      <section className="mb-8 flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800">
+        <span className="text-zinc-500">폭락률 보호 구간</span>
+        <span className="font-semibold">{strategy.crashProtectionPct}%</span>
+        <form action={updateCrashProtection} className="ml-auto flex items-center gap-2">
+          <input type="hidden" name="strategyId" value={strategy.id} />
+          <select
+            name="crashProtectionPct"
+            defaultValue={String(strategy.crashProtectionPct)}
+            className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          >
+            <option value="20">20%</option>
+            <option value="30">30%</option>
+          </select>
+          <button type="submit" className="rounded bg-foreground px-3 py-1 text-sm font-medium text-background">
+            변경
+          </button>
+        </form>
       </section>
 
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -168,7 +190,7 @@ export default async function ProjectDashboard({
                             <td className="whitespace-nowrap px-2 py-1.5">{tier.level}</td>
                             <td className="whitespace-nowrap px-2 py-1.5">{tier.label}</td>
                             <td className="whitespace-nowrap px-2 py-1.5">${fmt(tier.limitPrice)}</td>
-                            <td className="whitespace-nowrap px-2 py-1.5">{fmt(tier.qty, 4)}주</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(tier.qty), 0)}주</td>
                             <td className="px-2 py-1.5">
                               <span
                                 className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
@@ -200,12 +222,12 @@ export default async function ProjectDashboard({
                   <div className="flex flex-col gap-2 rounded bg-zinc-100 px-3 py-2 dark:bg-zinc-900">
                     <p>
                       <span className="font-semibold">쿼터매도 (보유의 1/4)</span>: 별지점 ${fmt(sellPlan.quarterSell.limitPrice)}{" "}
-                      LOC 매도 {fmt(sellPlan.quarterSell.qty, 4)}주 · 체결 시 T = 직전T × 0.75
+                      LOC 매도 {fmt(Math.round(sellPlan.quarterSell.qty), 0)}주 · 체결 시 T = 직전T × 0.75
                       <SellFillBadge limitPrice={sellPlan.quarterSell.limitPrice} closePrice={latestPrice.closePrice} />
                     </p>
                     <p>
                       <span className="font-semibold">잔여 지정가 매도 (보유의 3/4)</span>: 평단 + {sellPlan.remainderSell.fixedRate}%
-                      = ${fmt(sellPlan.remainderSell.limitPrice)} 지정가 매도 {fmt(sellPlan.remainderSell.qty, 4)}주 · T 변화 없음
+                      = ${fmt(sellPlan.remainderSell.limitPrice)} 지정가 매도 {fmt(Math.round(sellPlan.remainderSell.qty), 0)}주 · T 변화 없음
                       <SellFillBadge limitPrice={sellPlan.remainderSell.limitPrice} closePrice={latestPrice.closePrice} />
                     </p>
                     <p className="text-xs text-zinc-500">
@@ -414,7 +436,7 @@ export default async function ProjectDashboard({
                       ({t.tradeKind})
                     </span>
                     <span>
-                      ${fmt(t.price)} x {fmt(t.qty, 4)}주
+                      ${fmt(t.price)} x {fmt(Math.round(t.qty), 0)}주
                     </span>
                   </div>
                   <span className="text-xs text-zinc-500">

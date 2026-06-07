@@ -6,6 +6,7 @@ export const strategies = sqliteTable("strategies", {
   ticker: text("ticker").notNull(), // 'TQQQ' | 'SOXL'
   principal: real("principal").notNull(), // 원금
   splitCount: integer("split_count").notNull(), // 분할 수 (20 또는 40)
+  crashProtectionPct: integer("crash_protection_pct").notNull().default(20), // 폭락률 보호 구간 (20 또는 30, %)
   createdAt: text("created_at").notNull(), // ISO date
 });
 

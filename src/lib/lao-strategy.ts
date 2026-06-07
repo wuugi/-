@@ -102,14 +102,35 @@ export interface LadderTier {
   label: string;
 }
 
-const STEP_PCT = 3;
+/** 매수/매도 수량은 소수점 없이 정수 주 단위로 반올림해 노출한다 */
+function roundQty(qty: number): number {
+  return Math.max(Math.round(qty), 0);
+}
 
-/** 기준가에서 -3%p씩 내려가는 보조 단계별 LOC 사다리 (잔여 예산 소진용) */
-function buildStepDownLadder(basePrice: number, startLevel: number, qtyEach: number, count: number, label: string): LadderTier[] {
+export type CrashProtectionPct = 20 | 30;
+
+/**
+ * 폭락률 보호 구간에 따라 단계별 하락 LOC 사다리의 하락폭(%) 간격을 계산한다.
+ * 보호 구간이 클수록(30%) 더 넓은 폭(%)으로 단계를 나눠 깊은 폭락까지 대비하고,
+ * 보호 구간이 작으면(20%) 더 촘촘한 폭으로 단계를 나눈다.
+ */
+function getStepPct(crashProtectionPct: CrashProtectionPct, count: number): number {
+  return crashProtectionPct / count;
+}
+
+/** 기준가에서 -stepPct%p씩 내려가는 보조 단계별 LOC 사다리 (잔여 예산 소진용) */
+function buildStepDownLadder(
+  basePrice: number,
+  startLevel: number,
+  qtyEach: number,
+  count: number,
+  stepPct: number,
+  label: string
+): LadderTier[] {
   const tiers: LadderTier[] = [];
   for (let i = 0; i < count; i++) {
     const level = startLevel + i;
-    const dropPct = STEP_PCT * (i + 1);
+    const dropPct = Number((stepPct * (i + 1)).toFixed(2));
     tiers.push({
       level,
       dropPct,
@@ -124,55 +145,65 @@ function buildStepDownLadder(basePrice: number, startLevel: number, qtyEach: num
 /**
  * 첫 매수(T=0) 사다리: 큰수 LOC(전일 종가 대비 +10~15%) + 단계별 하락 LOC
  * 큰수 매수는 전일 종가보다 높은 가격에 걸어 시초가 갭상승에도 체결되게 하는 주문이다.
+ * 폭락률 보호 구간(20%/30%)에 맞춰 하락 사다리의 간격을 조정한다.
  */
-export function getFirstBuyLadder(prevClose: number, dailyBudget: number): LadderTier[] {
+export function getFirstBuyLadder(
+  prevClose: number,
+  dailyBudget: number,
+  crashProtectionPct: CrashProtectionPct = 20
+): LadderTier[] {
   const bigNumberPrice = Number((prevClose * 1.12).toFixed(2));
-  const bigNumberQty = Number((dailyBudget / 2 / bigNumberPrice).toFixed(4));
-  const stepQty = Number((dailyBudget / 2 / 4 / prevClose).toFixed(4));
+  const bigNumberQty = roundQty(dailyBudget / 2 / bigNumberPrice);
+  const stepQty = roundQty(dailyBudget / 2 / 4 / prevClose);
+  const stepPct = getStepPct(crashProtectionPct, 4);
   return [
     { level: 0, dropPct: -12, limitPrice: bigNumberPrice, qty: bigNumberQty, label: "큰수 매수(시초가 갭상승 대비)" },
-    ...buildStepDownLadder(prevClose, 1, stepQty, 4, "단계별 하락 매수"),
+    ...buildStepDownLadder(prevClose, 1, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
   ];
 }
 
 /**
  * 전반전(T < 분할수/2) 매수 사다리
  *  - 일일 매수금의 절반은 별지점 LOC, 절반은 평단가 LOC
- *  - 잔여 예산은 단계별 하락 LOC로 분산
+ *  - 잔여 예산은 폭락률 보호 구간(20%/30%)에 맞춘 단계별 하락 LOC로 분산
  */
 export function getFirstHalfLadder(
   avgPrice: number,
   starPoint: number,
   prevClose: number,
-  dailyBudget: number
+  dailyBudget: number,
+  crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
   const half = dailyBudget / 2;
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starQty = Number((half / 2 / buyTrigger).toFixed(4));
-  const avgQty = Number((half / 2 / avgPrice).toFixed(4));
-  const stepQty = Number((half / 2 / 3 / prevClose).toFixed(4));
+  const starQty = roundQty(half / 2 / buyTrigger);
+  const avgQty = roundQty(half / 2 / avgPrice);
+  const stepQty = roundQty(half / 2 / 3 / prevClose);
+  const stepPct = getStepPct(crashProtectionPct, 3);
   return [
     { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
     { level: 2, dropPct: 0, limitPrice: avgPrice, qty: avgQty, label: "평단가 LOC 매수" },
-    ...buildStepDownLadder(prevClose, 3, stepQty, 3, "단계별 하락 매수(예산 소진)"),
+    ...buildStepDownLadder(prevClose, 3, stepQty, 3, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
   ];
 }
 
 /**
  * 후반전(T >= 분할수/2) 매수 사다리
- *  - 일일 매수금 전체를 별지점 LOC + 단계별 하락 LOC로 배분
+ *  - 일일 매수금 전체를 별지점 LOC + 폭락률 보호 구간(20%/30%)에 맞춘 단계별 하락 LOC로 배분
  */
 export function getSecondHalfLadder(
   starPoint: number,
   prevClose: number,
-  dailyBudget: number
+  dailyBudget: number,
+  crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starQty = Number(((dailyBudget / 2) / buyTrigger).toFixed(4));
-  const stepQty = Number(((dailyBudget / 2) / 4 / prevClose).toFixed(4));
+  const starQty = roundQty((dailyBudget / 2) / buyTrigger);
+  const stepQty = roundQty((dailyBudget / 2) / 4 / prevClose);
+  const stepPct = getStepPct(crashProtectionPct, 4);
   return [
     { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
-    ...buildStepDownLadder(prevClose, 2, stepQty, 4, "단계별 하락 매수(예산 소진)"),
+    ...buildStepDownLadder(prevClose, 2, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
   ];
 }
 
@@ -204,8 +235,8 @@ const FIXED_SELL_RATE: Record<Ticker, number> = { TQQQ: 15, SOXL: 20 };
  */
 export function getSellPlan(ticker: Ticker, avgPrice: number, qty: number, starPoint: number): SellPlan {
   const fixedRate = FIXED_SELL_RATE[ticker];
-  const quarterQty = Number((qty / 4).toFixed(4));
-  const remainderQty = Number((qty - quarterQty).toFixed(4));
+  const quarterQty = roundQty(qty / 4);
+  const remainderQty = roundQty(qty - quarterQty);
   return {
     quarterSell: {
       limitPrice: getSellTriggerPrice(starPoint),

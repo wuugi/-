@@ -73,6 +73,18 @@ export function NewProjectModal() {
                 <option value="40">40회차</option>
               </select>
             </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">폭락률 보호 구간</span>
+              <select
+                name="crashProtectionPct"
+                required
+                defaultValue="20"
+                className="rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <option value="20">20%</option>
+                <option value="30">30%</option>
+              </select>
+            </label>
             <button
               type="submit"
               className="mt-2 rounded bg-foreground px-4 py-2 font-medium text-background"
