@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { recordTrade, updateCrashProtection } from "../../actions";
-import { recordPriceSnapshot } from "../../actions-price";
+import { fetchAndRecordPrice, recordPriceSnapshot } from "../../actions-price";
 import {
   getCurrentCycle,
   getCyclesByStrategy,
@@ -241,7 +241,15 @@ export default async function ProjectDashboard({
             </div>
           )}
 
-          <form action={recordPriceSnapshot} className="mt-4 flex flex-wrap items-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+          <form action={fetchAndRecordPrice} className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-4 text-sm dark:border-zinc-800">
+            <input type="hidden" name="ticker" value={strategy.ticker} />
+            <span className="text-zinc-500">최근 영업일 종가를 자동으로 가져와 기록합니다 (Yahoo Finance).</span>
+            <button type="submit" className="ml-auto shrink-0 whitespace-nowrap rounded border border-zinc-300 px-3 py-1.5 font-medium dark:border-zinc-700">
+              종가 자동 수집
+            </button>
+          </form>
+
+          <form action={recordPriceSnapshot} className="mt-2 flex flex-wrap items-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
             <input type="hidden" name="ticker" value={strategy.ticker} />
             <label className="flex flex-1 flex-col gap-1 text-sm">
               <span>날짜</span>
