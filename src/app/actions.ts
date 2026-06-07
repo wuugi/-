@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { strategies, cycles, trades, holdingsDaily } from "@/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { applyTDelta, type TradeKind } from "@/lib/lao-strategy";
 
 const BUY_KINDS: TradeKind[] = ["first", "full", "half", "extra"];
@@ -48,6 +49,7 @@ export async function createStrategy(formData: FormData) {
   });
 
   revalidatePath("/");
+  redirect(`/projects/${strategy.id}`);
 }
 
 /**
@@ -171,4 +173,5 @@ export async function recordTrade(formData: FormData) {
   }
 
   revalidatePath("/");
+  revalidatePath(`/projects/${strategyId}`);
 }

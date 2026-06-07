@@ -16,5 +16,5 @@ export async function recordPriceSnapshot(formData: FormData) {
 
   await db.insert(priceSnapshots).values({ ticker, date, closePrice });
 
-  revalidatePath("/");
+  revalidatePath("/", "layout");
 }
