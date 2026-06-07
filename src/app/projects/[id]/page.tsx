@@ -69,8 +69,12 @@ export default async function ProjectDashboard({
 
   const sortedPrices = [...recentPrices].sort((a, b) => (a.date < b.date ? -1 : 1));
   const latestPrice = sortedPrices.at(-1);
-  const prevClose = latestPrice?.closePrice ?? 0;
+  // "전일 종가"(사다리 기준가)는 최근 종가(체결 판정 대상)와는 다른, 그 직전 거래일의 종가여야 한다.
+  // 같은 값을 쓰면 "종가가 전일종가의 +N% 이내"라는 큰수/사다리 판정이 항상 자명하게 참이 되어 버린다.
+  const prevPriceSnapshot = sortedPrices.length >= 2 ? sortedPrices[sortedPrices.length - 2] : undefined;
+  const prevClose = prevPriceSnapshot?.closePrice ?? 0;
   const latestPriceIsTradingDay = latestPrice ? isUsMarketTradingDay(latestPrice.date) : false;
+  const hasPrevCloseForLadder = prevPriceSnapshot !== undefined && prevPriceSnapshot.date < (latestPrice?.date ?? "");
 
   const phase = getPhase(tValue, strategy.splitCount);
   const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
@@ -168,6 +172,11 @@ export default async function ProjectDashboard({
             <p className="text-sm text-zinc-500">
               최근 입력된 종가 날짜({latestPrice.date})는 미국 증시 휴장일(주말/공휴일)이라 체결 여부를 확인하지
               않습니다. 다음 개장일의 종가가 입력되면 추천과 체결 판정이 표시됩니다.
+            </p>
+          ) : !hasPrevCloseForLadder ? (
+            <p className="text-sm text-zinc-500">
+              {latestPrice.date}의 전일 거래일 종가가 아직 없어 매수 사다리를 계산할 수 없습니다. 직전 거래일의
+              종가를 입력하면 추천과 체결 판정이 표시됩니다.
             </p>
           ) : (
             <div className="flex flex-col gap-4 text-sm">

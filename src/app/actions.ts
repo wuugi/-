@@ -2,7 +2,7 @@
 
 import { db } from "@/db/client";
 import { strategies, cycles, trades, holdingsDaily, priceSnapshots } from "@/db/schema";
-import { and, eq, asc, desc } from "drizzle-orm";
+import { and, eq, asc, desc, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isUsMarketTradingDay, todayIsoKst } from "@/lib/market-date";
@@ -291,7 +291,24 @@ export async function autoRecordTodayFills(formData: FormData) {
 
   const closePrice = latestPrice.closePrice;
   const dayHigh = latestPrice.dayHigh ?? null;
-  const prevClose = closePrice;
+
+  // 사다리의 기준이 되는 "전일 종가"는 오늘(latestPrice.date) 종가와는 별개로,
+  // 그 직전 거래일의 종가여야 한다 (같은 값을 쓰면 "종가가 전일종가의 +N% 이내"라는
+  // 사다리/큰수 판정이 항상 자명하게 참이 되어 버린다).
+  const [prevPriceSnapshot] = await db
+    .select()
+    .from(priceSnapshots)
+    .where(and(eq(priceSnapshots.ticker, strategy.ticker), lt(priceSnapshots.date, date)))
+    .orderBy(desc(priceSnapshots.date), desc(priceSnapshots.id))
+    .limit(1);
+
+  if (!prevPriceSnapshot) {
+    throw new Error(
+      `${date}의 전일 종가 데이터가 없어 사다리를 계산할 수 없습니다. 직전 거래일의 종가를 먼저 입력하세요.`
+    );
+  }
+
+  const prevClose = prevPriceSnapshot.closePrice;
 
   const phase = getPhase(tValue, strategy.splitCount);
   const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
