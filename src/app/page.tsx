@@ -9,9 +9,12 @@ import {
   getTradesByStrategy,
 } from "@/lib/queries";
 import {
-  getBuyPlan,
+  getBuyLadder,
+  getMovingAverage,
   getRiskGauge,
-  getSellPlan,
+  getSellRecommendation,
+  judgeBuyLadderFills,
+  judgeSellFill,
   type RiskGauge,
 } from "@/lib/lao-strategy";
 
@@ -90,15 +93,25 @@ export default async function Home() {
   const latestPrice = sortedPrices.at(-1);
   const recentHigh = sortedPrices.reduce((max, p) => Math.max(max, p.closePrice), 0);
 
+  const closeSeries = sortedPrices.map((p) => p.closePrice);
+  const movingAverage = getMovingAverage(closeSeries, 5);
+
   let riskGauge: RiskGauge | null = null;
-  let buyPlan: ReturnType<typeof getBuyPlan> | null = null;
-  let sellPlan: ReturnType<typeof getSellPlan> | null = null;
+  let buyLadder: ReturnType<typeof judgeBuyLadderFills> | null = null;
+  let sellRecommendation: ReturnType<typeof getSellRecommendation> | null = null;
 
   if (latestPrice && currentRound) {
     riskGauge = getRiskGauge(latestPrice.closePrice, recentHigh || latestPrice.closePrice);
-    buyPlan = getBuyPlan(strategy.principal, strategy.splitCount, latestPrice.closePrice, riskGauge);
-    if (qty > 0 && avgPrice > 0) {
-      sellPlan = getSellPlan(avgPrice, qty, currentRound.targetRate);
+    const ladder = getBuyLadder(latestPrice.closePrice, riskGauge);
+    buyLadder = judgeBuyLadderFills(ladder, latestPrice.closePrice);
+    if (qty > 0 && avgPrice > 0 && currentRound.roundNo >= 2) {
+      sellRecommendation = getSellRecommendation(
+        avgPrice,
+        qty,
+        currentRound.targetRate,
+        latestPrice.closePrice,
+        movingAverage
+      );
     }
   }
 
@@ -132,26 +145,83 @@ export default async function Home() {
           ) : (
             <div className="flex flex-col gap-4 text-sm">
               <div>
-                <h3 className="mb-1 font-medium">매수 계획 (1회차 예산: ${fmt(strategy.principal / strategy.splitCount)})</h3>
-                <ul className="flex flex-col gap-1">
-                  {buyPlan?.map((item) => (
-                    <li key={item.label} className="flex justify-between rounded bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
-                      <span>{item.label} 매수</span>
-                      <span>
-                        ${fmt(item.price)} x {fmt(item.qty, 4)}주
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <h3 className="mb-1 font-medium">
+                  폭락률 단계별 LOC 매수 사다리 (전일 종가 ${fmt(latestPrice.closePrice)} 기준)
+                </h3>
+                <table className="w-full overflow-hidden rounded text-xs">
+                  <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
+                    <tr>
+                      <th className="whitespace-nowrap px-2 py-1.5">단계</th>
+                      <th className="whitespace-nowrap px-2 py-1.5">하락률</th>
+                      <th className="whitespace-nowrap px-2 py-1.5">LOC 지정가</th>
+                      <th className="whitespace-nowrap px-2 py-1.5">매수 수량</th>
+                      <th className="whitespace-nowrap px-2 py-1.5">자동 판단</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {buyLadder?.map((tier) => (
+                      <tr key={tier.level} className="border-t border-zinc-200 dark:border-zinc-800">
+                        <td className="whitespace-nowrap px-2 py-1.5">{tier.level}단계</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">-{tier.dropPct}%</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">${fmt(tier.limitPrice)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{fmt(tier.qty)}주</td>
+                        <td className="px-2 py-1.5">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs ${
+                              tier.filled
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                                : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                            }`}
+                          >
+                            {tier.filled ? "체결 (종가 ≤ 지정가)" : "미체결"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-1 text-xs text-zinc-500">
+                  평단가 ${avgPrice > 0 ? fmt(avgPrice) : "-"} · 1회차 예산 ${fmt(strategy.principal / strategy.splitCount)} ·
+                  최근 입력된 종가를 기준으로 각 단계의 LOC 매수 체결 여부를 자동 판단합니다 (종가 ≤ 지정가 → 체결).
+                </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium">매도 계획</h3>
-                {sellPlan ? (
-                  <p className="rounded bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
-                    목표가 ${fmt(sellPlan.sellPrice)} (수익률 {currentRound?.targetRate}%)에 보유 {fmt(sellPlan.sellQty, 4)}주 전량 매도
-                  </p>
+                <h3 className="mb-1 font-medium">매도 추천 (2회차부터 매일 AFTER 지정가 갱신)</h3>
+                {currentRound && currentRound.roundNo < 2 ? (
+                  <p className="text-zinc-500">1회차는 매도 지정가를 걸지 않습니다. 2회차부터 매일 갱신됩니다.</p>
+                ) : sellRecommendation ? (
+                  <div className="flex flex-col gap-1.5 rounded bg-zinc-100 px-3 py-2 dark:bg-zinc-900">
+                    <p>
+                      목표가 <span className="font-semibold">${fmt(sellRecommendation.limitPrice)}</span> (조정된 목표 수익률{" "}
+                      {sellRecommendation.adjustedTargetRate}%, 회차 기준 {currentRound?.targetRate}%)에 보유{" "}
+                      {fmt(sellRecommendation.qty, 4)}주 전량 AFTER 지정가 매도 권장
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      추세 판단: <span className="font-medium">{sellRecommendation.trend}</span>
+                      {movingAverage !== null && <> (5일 이동평균 ${fmt(movingAverage)} 대비)</>} ·{" "}
+                      {sellRecommendation.trend === "하락"
+                        ? "하락 추세에서는 회전율을 높이기 위해 목표 수익률을 낮춰 지정가를 잡습니다."
+                        : "상승/횡보 추세에서는 회차 목표 수익률을 그대로 유지합니다."}
+                    </p>
+                    {latestPrice && (
+                      <p className="text-xs">
+                        자동 판단:{" "}
+                        <span
+                          className={`rounded-full px-2 py-0.5 ${
+                            judgeSellFill(sellRecommendation.limitPrice, latestPrice.closePrice)
+                              ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                              : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                          }`}
+                        >
+                          {judgeSellFill(sellRecommendation.limitPrice, latestPrice.closePrice)
+                            ? "체결 (종가 ≥ 지정가)"
+                            : "미체결"}
+                        </span>
+                      </p>
+                    )}
+                  </div>
                 ) : (
-                  <p className="text-zinc-500">보유 수량이 없어 매도 계획이 없습니다.</p>
+                  <p className="text-zinc-500">보유 수량이 없어 매도 추천이 없습니다.</p>
                 )}
               </div>
             </div>
