@@ -98,8 +98,8 @@ export default async function ProjectDashboard({
           ← 프로젝트 목록으로
         </Link>
       </div>
-      <header className="mb-8 flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">
+      <header className="mb-8 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+        <h1 className="text-xl font-bold sm:text-2xl">
           {strategy.ticker} 무한매수법 대시보드 (라오어 4.0)
         </h1>
         <span className="text-sm text-zinc-500">원금 ${fmt(strategy.principal, 0)}</span>
@@ -165,7 +165,8 @@ export default async function ProjectDashboard({
                       : "후반전 매수 사다리 (별지점 LOC 중심)"}{" "}
                   (전일 종가 ${fmt(prevClose)} 기준)
                 </h3>
-                <table className="w-full overflow-hidden rounded text-xs">
+                <div className="overflow-x-auto rounded">
+                <table className="w-full min-w-[480px] overflow-hidden text-xs">
                   <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
                     <tr>
                       <th className="whitespace-nowrap px-2 py-1.5">단계</th>
@@ -208,6 +209,7 @@ export default async function ProjectDashboard({
                     )}
                   </tbody>
                 </table>
+                </div>
                 <p className="mt-1 text-xs text-zinc-500">
                   최근 입력된 종가를 기준으로 각 단계의 LOC 매수 체결 여부를 자동 판단합니다 (종가 ≤ 지정가 → 체결).
                 </p>

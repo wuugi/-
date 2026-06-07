@@ -12,14 +12,16 @@ export default async function Home() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
-      <header className="mb-8 flex items-start justify-between gap-4">
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">라오어의 무한매수법 - 프로젝트 목록</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">라오어의 무한매수법 - 프로젝트 목록</h1>
           <p className="mt-1 text-sm text-zinc-500">
             종목·분할수별로 운용 중인 무한매수 프로젝트를 관리합니다. 프로젝트를 선택하면 상세 대시보드로 이동합니다.
           </p>
         </div>
-        <NewProjectModal />
+        <div className="shrink-0">
+          <NewProjectModal />
+        </div>
       </header>
 
       <section className="mb-10">

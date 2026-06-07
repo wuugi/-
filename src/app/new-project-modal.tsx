@@ -11,7 +11,7 @@ export function NewProjectModal() {
       <button
         type="button"
         onClick={() => dialogRef.current?.showModal()}
-        className="rounded bg-foreground px-4 py-2 text-sm font-medium text-background"
+        className="whitespace-nowrap rounded bg-foreground px-4 py-2 text-sm font-medium text-background"
       >
         새 프로젝트 시작
       </button>
