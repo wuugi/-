@@ -159,7 +159,7 @@ export async function recordTrade(formData: FormData) {
     .select()
     .from(holdingsDaily)
     .where(eq(holdingsDaily.strategyId, strategyId))
-    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
+    .orderBy(desc(holdingsDaily.id))
     .limit(1);
 
   const tBefore = latestHoldings?.tValue ?? 0;
@@ -264,7 +264,7 @@ export async function autoRecordTodayFills(formData: FormData) {
     .select()
     .from(holdingsDaily)
     .where(eq(holdingsDaily.strategyId, strategyId))
-    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
+    .orderBy(desc(holdingsDaily.id))
     .limit(1);
 
   const [latestPrice] = await db
@@ -285,12 +285,16 @@ export async function autoRecordTodayFills(formData: FormData) {
 
   const date = latestPrice.date;
 
-  // 가격 스냅샷은 티커 단위로 공유되므로, 전략이 생성되기 전 날짜의 종가가
-  // "최근 종가"로 잡힐 수 있다 (예: 막 생성된 전략의 경우). 그 날짜엔 전략 자체가
-  // 없었으니 체결이 있을 수 없다 — 자동 기록을 건너뛴다.
-  if (date < strategy.createdAt) {
+  // 가격 스냅샷은 티커 단위로 공유되므로, 전략이 생성되기 훨씬 이전 날짜의 종가가
+  // "최근 종가"로 잡힐 수 있다. createdAt은 KST 기준이고 미국 거래일은 KST보다
+  // 최대 1일 뒤처지므로(장중에 생성 시 KST 날짜가 미국 날짜보다 하루 앞섬),
+  // createdAt - 1일까지는 유효한 거래일로 허용한다.
+  const createdAtDate = new Date(strategy.createdAt + "T00:00:00Z");
+  createdAtDate.setUTCDate(createdAtDate.getUTCDate() - 1);
+  const minAllowedDate = createdAtDate.toISOString().slice(0, 10);
+  if (date < minAllowedDate) {
     throw new Error(
-      `${date}는 이 전략이 생성(${strategy.createdAt})되기 이전 날짜라 체결을 자동 기록할 수 없습니다. 전략 생성 이후의 종가가 입력되면 자동 기록할 수 있습니다.`
+      `${date}는 이 전략이 생성(${strategy.createdAt})되기 이전 날짜라 체결을 자동 기록할 수 없습니다.`
     );
   }
 

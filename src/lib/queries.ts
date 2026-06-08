@@ -24,7 +24,7 @@ export async function getStrategySummaries() {
         .select()
         .from(holdingsDaily)
         .where(eq(holdingsDaily.strategyId, strategy.id))
-        .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
+        .orderBy(desc(holdingsDaily.id))
         .limit(1);
 
       return { strategy, currentCycle: currentCycle ?? null, holdings: holdings ?? null };
@@ -55,7 +55,7 @@ export async function getLatestHoldings(strategyId: number) {
     .select()
     .from(holdingsDaily)
     .where(eq(holdingsDaily.strategyId, strategyId))
-    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
+    .orderBy(desc(holdingsDaily.id))
     .limit(1);
   return rows[0] ?? null;
 }
