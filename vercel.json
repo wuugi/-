@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/auto-record",
+      "schedule": "0 22 * * 1-5"
+    }
+  ]
+}
