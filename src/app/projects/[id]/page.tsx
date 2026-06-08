@@ -12,7 +12,6 @@ import {
 } from "@/lib/queries";
 import {
   detectCrashBigNumberBuy,
-  detectSurgeForcedFirstBuy,
   getBuyTriggerPrice,
   getDailyBuyBudget,
   getFirstBuyLadder,
@@ -23,9 +22,6 @@ import {
   getSellTriggerPrice,
   getStarPercent,
   getStarPoint,
-  judgeBuyFill,
-  judgeLimitSellFill,
-  judgeSellFill,
   type CrashProtectionPct,
   type LadderTier,
   type SpecialBuyPlan,
@@ -69,12 +65,12 @@ export default async function ProjectDashboard({
 
   const sortedPrices = [...recentPrices].sort((a, b) => (a.date < b.date ? -1 : 1));
   const latestPrice = sortedPrices.at(-1);
-  // "전일 종가"(사다리 기준가)는 최근 종가(체결 판정 대상)와는 다른, 그 직전 거래일의 종가여야 한다.
-  // 같은 값을 쓰면 "종가가 전일종가의 +N% 이내"라는 큰수/사다리 판정이 항상 자명하게 참이 되어 버린다.
-  const prevPriceSnapshot = sortedPrices.length >= 2 ? sortedPrices[sortedPrices.length - 2] : undefined;
-  const prevClose = prevPriceSnapshot?.closePrice ?? 0;
+  // 가장 최근에 수집된 종가 = "오늘(다음 거래일)의 매수 사다리"를 세우는 기준이 되는 전일 종가.
+  // "오늘"의 종가는 아직 장이 마감되지 않아 존재하지 않으므로, 이 값으로 체결 여부를
+  // 판정해서는 안 된다 (지정가는 항상 이 값 기준으로 계산되므로 자기 자신과 비교하면
+  // 항상 "체결"이 되어 버린다). 체결 판정은 다음 거래일 종가가 들어온 뒤 자동 기록에서 처리한다.
+  const prevClose = latestPrice?.closePrice ?? 0;
   const latestPriceIsTradingDay = latestPrice ? isUsMarketTradingDay(latestPrice.date) : false;
-  const hasPrevCloseForLadder = prevPriceSnapshot !== undefined && prevPriceSnapshot.date < (latestPrice?.date ?? "");
 
   const phase = getPhase(tValue, strategy.splitCount);
   const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
@@ -98,11 +94,6 @@ export default async function ProjectDashboard({
       }
     }
   }
-
-  const surgeForcedBuy =
-    !crashBigNumber && tValue <= 0 && latestPrice && buyLadder.length > 0
-      ? detectSurgeForcedFirstBuy(latestPrice.closePrice, buyLadder, dailyBudget)
-      : null;
 
   const sellPlan =
     tValue >= 1 && qty > 0 && avgPrice > 0 && starPoint !== null
@@ -173,11 +164,6 @@ export default async function ProjectDashboard({
               최근 입력된 종가 날짜({latestPrice.date})는 미국 증시 휴장일(주말/공휴일)이라 체결 여부를 확인하지
               않습니다. 다음 개장일의 종가가 입력되면 추천과 체결 판정이 표시됩니다.
             </p>
-          ) : !hasPrevCloseForLadder ? (
-            <p className="text-sm text-zinc-500">
-              {latestPrice.date}의 전일 거래일 종가가 아직 없어 매수 사다리를 계산할 수 없습니다. 직전 거래일의
-              종가를 입력하면 추천과 체결 판정이 표시됩니다.
-            </p>
           ) : (
             <div className="flex flex-col gap-4 text-sm">
               <div className="rounded-xl bg-[var(--accent-soft)] px-3 py-2 text-xs">
@@ -215,16 +201,12 @@ export default async function ProjectDashboard({
                         <tr>
                           <th className="whitespace-nowrap px-2 py-1.5">큰수 LOC 지정가</th>
                           <th className="whitespace-nowrap px-2 py-1.5">통합 매수 수량</th>
-                          <th className="whitespace-nowrap px-2 py-1.5">자동 판단</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr className="border-t border-white/40 dark:border-black/20">
                           <td className="whitespace-nowrap px-2 py-1.5">${fmt(crashBigNumber.limitPrice)}</td>
                           <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(crashBigNumber.qty), 0)}주</td>
-                          <td className="px-2 py-1.5">
-                            <BuyFillBadge limitPrice={crashBigNumber.limitPrice} closePrice={latestPrice.closePrice} />
-                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -240,13 +222,12 @@ export default async function ProjectDashboard({
                           <th className="whitespace-nowrap px-2 py-1.5">사유</th>
                           <th className="whitespace-nowrap px-2 py-1.5">LOC 지정가</th>
                           <th className="whitespace-nowrap px-2 py-1.5">매수 수량</th>
-                          <th className="whitespace-nowrap px-2 py-1.5">자동 판단</th>
                         </tr>
                       </thead>
                       <tbody>
                         {buyLadder.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="px-2 py-3 text-center text-zinc-500">
+                            <td colSpan={4} className="px-2 py-3 text-center text-zinc-500">
                               매수 사다리를 계산할 수 없습니다 (평단가 또는 종가 데이터 필요).
                             </td>
                           </tr>
@@ -257,9 +238,6 @@ export default async function ProjectDashboard({
                               <td className="whitespace-nowrap px-2 py-1.5">{tier.label}</td>
                               <td className="whitespace-nowrap px-2 py-1.5">${fmt(tier.limitPrice)}</td>
                               <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(tier.qty), 0)}주</td>
-                              <td className="px-2 py-1.5">
-                                <BuyFillBadge limitPrice={tier.limitPrice} closePrice={latestPrice.closePrice} />
-                              </td>
                             </tr>
                           ))
                         )}
@@ -267,24 +245,10 @@ export default async function ProjectDashboard({
                     </table>
                     </div>
                     <p className="mt-1 text-xs text-zinc-500">
-                      최근 입력된 종가를 기준으로 각 단계의 LOC 매수 체결 여부를 자동 판단합니다 (종가 ≤ 지정가 → 체결).
+                      오늘 장이 마감되어 종가가 입력되면, 이 사다리를 기준으로 체결 여부가 자동 기록됩니다 (종가 ≤ 지정가 → 체결).
                     </p>
                   </>
                 )}
-
-                {surgeForcedBuy ? (
-                  <div className="mt-2 flex flex-col gap-1 rounded-xl bg-[var(--negative-soft)] px-3 py-2 text-xs">
-                    <p>
-                      <span className="rounded-full bg-[var(--negative)] px-2 py-0.5 font-medium text-white">특이사항</span>{" "}
-                      예상보다 큰 갭상승으로 큰수 사다리가 체결되지 않아, &quot;첫 매수는 무조건 매수&quot; 원칙에 따라
-                      종가 기준 전액 매수로 자동 보정되었습니다.
-                    </p>
-                    <p>
-                      종가 ${fmt(latestPrice.closePrice)} 기준 {fmt(Math.round(surgeForcedBuy.qty), 0)}주 매수로 처리됩니다.{" "}
-                      {surgeForcedBuy.note.replace("[특이사항] ", "")}
-                    </p>
-                  </div>
-                ) : null}
               </div>
               <div>
                 <h3 className="mb-1 font-medium">매도 계획 (2회차/T≥1부터 매일 지정가 갱신)</h3>
@@ -297,23 +261,14 @@ export default async function ProjectDashboard({
                     <p>
                       <span className="font-semibold">쿼터매도 (보유의 1/4)</span>: 별지점 ${fmt(sellPlan.quarterSell.limitPrice)}{" "}
                       LOC 매도 {fmt(Math.round(sellPlan.quarterSell.qty), 0)}주 · 체결 시 T = 직전T × 0.75
-                      <SellFillBadge limitPrice={sellPlan.quarterSell.limitPrice} closePrice={latestPrice.closePrice} />
                     </p>
                     <p>
                       <span className="font-semibold">잔여 지정가 매도 (보유의 3/4)</span>: 평단 + {sellPlan.remainderSell.fixedRate}%
                       = ${fmt(sellPlan.remainderSell.limitPrice)} 지정가 매도 {fmt(Math.round(sellPlan.remainderSell.qty), 0)}주 · T 변화 없음
-                      <LimitSellFillBadge
-                        limitPrice={sellPlan.remainderSell.limitPrice}
-                        closePrice={latestPrice.closePrice}
-                        dayHigh={latestPrice.dayHigh ?? null}
-                      />
                     </p>
                     <p className="text-xs text-zinc-500">
-                      지정가 주문은 장 시작 전(프리마켓~정규장~애프터마켓을 포괄)에 갱신해 거는 것을 권장합니다. 잔여 지정가
-                      매도는 일반 지정가 주문이라 종가와 무관하게 장중에 가격이 닿으면 그 시점에 체결될 수 있습니다 —{" "}
-                      {latestPrice.dayHigh != null
-                        ? "장중 고가 데이터를 반영해 체결 가능성을 판단합니다."
-                        : "장중 고가 데이터가 없어 종가만으로 보수적으로 판단하므로, 실제로는 표시보다 더 일찍/자주 체결됐을 수 있습니다. 정확한 체결은 증권사 체결 내역을 거래 입력에서 직접 보정해 주세요."}
+                      지정가 주문은 장 시작 전(프리마켓~정규장~애프터마켓을 포괄)에 갱신해 거는 것을 권장합니다. 체결
+                      여부는 오늘 장이 마감되어 종가(및 장중 고가)가 입력되면 자동으로 기록됩니다.
                     </p>
                   </div>
                 ) : (
@@ -572,56 +527,3 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BuyFillBadge({ limitPrice, closePrice }: { limitPrice: number; closePrice: number }) {
-  const filled = judgeBuyFill(limitPrice, closePrice);
-  return (
-    <span
-      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
-        filled
-          ? "bg-[var(--positive-soft)] text-[var(--positive)]"
-          : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-      }`}
-    >
-      {filled ? "체결 (종가 ≤ 지정가)" : "미체결"}
-    </span>
-  );
-}
-
-function SellFillBadge({ limitPrice, closePrice }: { limitPrice: number; closePrice: number }) {
-  const filled = judgeSellFill(limitPrice, closePrice);
-  return (
-    <span
-      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
-        filled
-          ? "bg-[var(--negative-soft)] text-[var(--negative)]"
-          : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-      }`}
-    >
-      {filled ? "체결 (종가 ≥ 지정가)" : "미체결"}
-    </span>
-  );
-}
-
-function LimitSellFillBadge({
-  limitPrice,
-  closePrice,
-  dayHigh,
-}: {
-  limitPrice: number;
-  closePrice: number;
-  dayHigh: number | null;
-}) {
-  const filled = judgeLimitSellFill(limitPrice, closePrice, dayHigh);
-  const basis = dayHigh != null ? "장중 고가 ≥ 지정가" : "종가 ≥ 지정가 (고가 데이터 없음)";
-  return (
-    <span
-      className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
-        filled
-          ? "bg-[var(--negative-soft)] text-[var(--negative)]"
-          : "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-      }`}
-    >
-      {filled ? `체결 가능성 (${basis})` : "미체결"}
-    </span>
-  );
-}
