@@ -285,6 +285,15 @@ export async function autoRecordTodayFills(formData: FormData) {
 
   const date = latestPrice.date;
 
+  // 가격 스냅샷은 티커 단위로 공유되므로, 전략이 생성되기 전 날짜의 종가가
+  // "최근 종가"로 잡힐 수 있다 (예: 막 생성된 전략의 경우). 그 날짜엔 전략 자체가
+  // 없었으니 체결이 있을 수 없다 — 자동 기록을 건너뛴다.
+  if (date < strategy.createdAt) {
+    throw new Error(
+      `${date}는 이 전략이 생성(${strategy.createdAt})되기 이전 날짜라 체결을 자동 기록할 수 없습니다. 전략 생성 이후의 종가가 입력되면 자동 기록할 수 있습니다.`
+    );
+  }
+
   if (!isUsMarketTradingDay(date)) {
     throw new Error(`${date}는 미국 증시 휴장일(주말/공휴일)이라 체결 여부를 자동 기록할 수 없습니다.`);
   }

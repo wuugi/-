@@ -30,12 +30,17 @@ export async function fetchRecentClosePrices(ticker: string, days = 10): Promise
   const lows: Array<number | null> = quote.low ?? [];
   const gmtoffset: number = result?.meta?.gmtoffset ?? 0;
 
+  // 거래소 현지 기준 "오늘" 날짜는 아직 장이 마감되지 않아 종가가 확정되지 않았을 수
+  // 있으므로 제외한다 (장중에 조회하면 마지막 막대가 미완성 종가로 채워져 들어온다).
+  const exchangeTodayIso = new Date(Date.now() + gmtoffset * 1000).toISOString().slice(0, 10);
+
   const prices: FetchedClosePrice[] = [];
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
     if (close == null) continue;
     const localMs = (timestamps[i] + gmtoffset) * 1000;
     const date = new Date(localMs).toISOString().slice(0, 10);
+    if (date >= exchangeTodayIso) continue;
     const high = highs[i];
     const low = lows[i];
     prices.push({
