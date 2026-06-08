@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { priceSnapshots } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { fetchLatestClosePrice } from "@/lib/price-fetch";
+import { fetchRecentClosePrices } from "@/lib/price-fetch";
 
 async function upsertPriceSnapshot(
   ticker: string,
@@ -44,7 +44,11 @@ export async function recordPriceSnapshot(formData: FormData) {
   revalidatePath("/", "layout");
 }
 
-/** Yahoo Finance에서 최근 영업일 종가/고가/저가를 자동으로 가져와 기록한다 (이미 있는 날짜면 갱신) */
+/**
+ * Yahoo Finance에서 최근 영업일 종가/고가/저가를 자동으로 가져와 기록한다 (이미 있는 날짜면 갱신).
+ * 최신 하루치만 받으면 "전일 종가"(사다리 기준가) 계산에 필요한 직전 거래일 데이터가
+ * 비어 있을 수 있으므로, 최근 며칠치를 함께 받아 연속된 데이터로 채워 넣는다.
+ */
 export async function fetchAndRecordPrice(formData: FormData) {
   const ticker = String(formData.get("ticker") ?? "").trim();
 
@@ -52,12 +56,14 @@ export async function fetchAndRecordPrice(formData: FormData) {
     throw new Error("종목은 TQQQ 또는 SOXL이어야 합니다.");
   }
 
-  const latest = await fetchLatestClosePrice(ticker);
-  if (!latest) {
+  const recent = await fetchRecentClosePrices(ticker, 10);
+  if (recent.length === 0) {
     throw new Error("종가를 자동으로 가져오지 못했습니다. 잠시 후 다시 시도하거나 직접 입력하세요.");
   }
 
-  await upsertPriceSnapshot(ticker, latest.date, latest.closePrice, latest.dayHigh, latest.dayLow);
+  for (const p of recent) {
+    await upsertPriceSnapshot(ticker, p.date, p.closePrice, p.dayHigh, p.dayLow);
+  }
 
   revalidatePath("/", "layout");
 }

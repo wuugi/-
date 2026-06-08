@@ -8,12 +8,18 @@ export interface FetchedClosePrice {
   dayLow: number | null;
 }
 
-export async function fetchLatestClosePrice(ticker: string): Promise<FetchedClosePrice | null> {
+/**
+ * 최근 N영업일치 종가/고가/저가를 과거 → 최신 순으로 가져온다.
+ * 하루치만 가져오면, "전일 종가"(사다리 기준가)를 계산할 직전 거래일 데이터가
+ * 비어 있을 수 있으므로(예: 신규 프로젝트, 수집을 며칠 건너뛴 경우) 항상
+ * 며칠치를 함께 가져와 연속된 데이터를 보장한다.
+ */
+export async function fetchRecentClosePrices(ticker: string, days = 10): Promise<FetchedClosePrice[]> {
   const res = await fetch(
-    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${days}d&interval=1d`,
     { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store" }
   );
-  if (!res.ok) return null;
+  if (!res.ok) return [];
 
   const data = await res.json();
   const result = data?.chart?.result?.[0];
@@ -24,19 +30,25 @@ export async function fetchLatestClosePrice(ticker: string): Promise<FetchedClos
   const lows: Array<number | null> = quote.low ?? [];
   const gmtoffset: number = result?.meta?.gmtoffset ?? 0;
 
-  for (let i = timestamps.length - 1; i >= 0; i--) {
+  const prices: FetchedClosePrice[] = [];
+  for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
     if (close == null) continue;
     const localMs = (timestamps[i] + gmtoffset) * 1000;
     const date = new Date(localMs).toISOString().slice(0, 10);
     const high = highs[i];
     const low = lows[i];
-    return {
+    prices.push({
       date,
       closePrice: Number(close.toFixed(2)),
       dayHigh: high != null ? Number(high.toFixed(2)) : null,
       dayLow: low != null ? Number(low.toFixed(2)) : null,
-    };
+    });
   }
-  return null;
+  return prices;
+}
+
+export async function fetchLatestClosePrice(ticker: string): Promise<FetchedClosePrice | null> {
+  const prices = await fetchRecentClosePrices(ticker, 5);
+  return prices.at(-1) ?? null;
 }
