@@ -133,7 +133,7 @@ export default async function ProjectDashboard({
         <StatCard label="별%" value={`${fmt(starPercent)}%`} />
         <StatCard label="평단가" value={avgPrice > 0 ? `$${fmt(avgPrice)}` : "-"} />
         <StatCard label="보유수량" value={qty > 0 ? fmt(Math.round(qty), 0) : "0"} />
-        <StatCard label="누적 매수금액" value={totalBought > 0 ? `$${fmt(totalBought, 0)}` : "-"} />
+        <StatCard label="누적 매수금액" value={totalBought > 0 ? `$${fmt(totalBought, 2)}` : "-"} />
       </section>
 
       {/* 폭락률 보호 구간 표시 + 수정 */}
