@@ -8,7 +8,7 @@ export const strategies = sqliteTable("strategies", {
   principal: real("principal").notNull(), // 원금
   splitCount: integer("split_count").notNull(), // 분할 수 (20 또는 40)
   crashProtectionPct: integer("crash_protection_pct").notNull().default(20), // 폭락률 보호 구간 (20 또는 30, %)
-  createdAt: text("created_at").notNull(), // ISO date
+  createdAt: text("created_at").notNull(), // ISO datetime (UTC, e.g. 2026-06-08T14:00:00.000Z)
 });
 
 // 사이클: T=0(보유 zero)에서 시작해 보유수량이 0이 되어 종료될 때까지의 한 바퀴

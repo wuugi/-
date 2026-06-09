@@ -5,7 +5,7 @@ import { strategies, cycles, trades, holdingsDaily, priceSnapshots } from "@/db/
 import { and, eq, asc, desc, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { isUsMarketTradingDay, todayIsoKst } from "@/lib/market-date";
+import { isUsMarketTradingDay, todayIsoKst, usMarketCloseUtcMs } from "@/lib/market-date";
 import {
   applyTDelta,
   detectCrashBigNumberBuy,
@@ -56,7 +56,7 @@ export async function createStrategy(formData: FormData) {
 
   const [strategy] = await db
     .insert(strategies)
-    .values({ name: name || null, ticker, principal, splitCount, crashProtectionPct, createdAt: todayIso() })
+    .values({ name: name || null, ticker, principal, splitCount, crashProtectionPct, createdAt: new Date().toISOString() })
     .returning();
 
   await db.insert(cycles).values({
@@ -285,21 +285,18 @@ export async function autoRecordTodayFills(formData: FormData) {
 
   const date = latestPrice.date;
 
-  // 가격 스냅샷은 티커 단위로 공유되므로, 전략이 생성되기 훨씬 이전 날짜의 종가가
-  // "최근 종가"로 잡힐 수 있다. createdAt은 KST 기준이고 미국 거래일은 KST보다
-  // 최대 1일 뒤처지므로(장중에 생성 시 KST 날짜가 미국 날짜보다 하루 앞섬),
-  // createdAt - 1일까지는 유효한 거래일로 허용한다.
-  const createdAtDate = new Date(strategy.createdAt + "T00:00:00Z");
-  createdAtDate.setUTCDate(createdAtDate.getUTCDate() - 1);
-  const minAllowedDate = createdAtDate.toISOString().slice(0, 10);
-  if (date < minAllowedDate) {
-    throw new Error(
-      `${date}는 이 전략이 생성(${strategy.createdAt})되기 이전 날짜라 체결을 자동 기록할 수 없습니다.`
-    );
+  // 전략 생성 시각(UTC)이 해당 거래일의 장 마감(4 PM ET) 이후면 그날 체결이 불가능하다.
+  // createdAt이 날짜만 있는 구 형식(예: "2026-06-08")이면 00:00 UTC로 파싱해
+  // "장 열리기 전 생성"으로 간주한다(안전한 방향).
+  const createdAtMs = new Date(strategy.createdAt).getTime();
+  const marketCloseMs = usMarketCloseUtcMs(date);
+  if (createdAtMs > marketCloseMs) {
+    // 정보성: 에러가 아니라 조용히 건너뜀
+    return;
   }
 
   if (!isUsMarketTradingDay(date)) {
-    throw new Error(`${date}는 미국 증시 휴장일(주말/공휴일)이라 체결 여부를 자동 기록할 수 없습니다.`);
+    return; // 휴장일도 조용히 건너뜀
   }
 
   const closePrice = latestPrice.closePrice;
@@ -358,9 +355,7 @@ export async function autoRecordTodayFills(formData: FormData) {
     .from(trades)
     .where(and(eq(trades.strategyId, strategyId), eq(trades.date, date)));
   if (existingTradesForDate.length > 0) {
-    throw new Error(
-      `${date}에는 이미 기록된 체결이 있어 자동 기록을 건너뜁니다. 추가/정정이 필요하면 거래 입력에서 직접 추가하세요.`
-    );
+    return; // 이미 기록된 날짜 — 조용히 건너뜀
   }
 
   const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number; note?: string }> = [];
@@ -419,7 +414,7 @@ export async function autoRecordTodayFills(formData: FormData) {
   }
 
   if (planned.length === 0) {
-    throw new Error("최근 종가 기준으로 자동 기록할 체결 내역이 없습니다 (사다리/매도 지정가에 종가가 닿지 않았습니다).");
+    return; // 종가가 어떤 지정가에도 닿지 않음 — 체결 없음, 조용히 건너뜀
   }
 
   for (const p of planned) {
