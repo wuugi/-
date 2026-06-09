@@ -38,7 +38,9 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <AutoSyncTrigger />
-        <ThemeToggle />
+        <nav className="sticky top-0 z-50 flex justify-end px-4 py-2 bg-[var(--background)] border-b border-[color-mix(in_srgb,var(--foreground)_8%,transparent)]">
+          <ThemeToggle />
+        </nav>
         {children}
       </body>
     </html>

@@ -262,18 +262,41 @@ export default async function ProjectDashboard({
                     T값이 1 미만(첫 매수 단계)에서는 매도 지정가를 걸지 않습니다. T값이 1 이상이 되면 매일 갱신됩니다.
                   </p>
                 ) : sellPlan ? (
-                  <div className="flex flex-col gap-2 rounded-xl bg-[var(--accent-soft)] px-3 py-2">
-                    <p>
-                      <span className="font-semibold">쿼터매도 (보유의 1/4)</span>: 별지점 ${fmt(sellPlan.quarterSell.limitPrice)}{" "}
-                      LOC 매도 {fmt(Math.round(sellPlan.quarterSell.qty), 0)}주 · 체결 시 T = 직전T × 0.75
-                    </p>
-                    <p>
-                      <span className="font-semibold">잔여 지정가 매도 (보유의 3/4)</span>: 평단 + {sellPlan.remainderSell.fixedRate}%
-                      = ${fmt(sellPlan.remainderSell.limitPrice)} 지정가 매도 {fmt(Math.round(sellPlan.remainderSell.qty), 0)}주 · T 변화 없음
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      지정가 주문은 장 시작 전(프리마켓~정규장~애프터마켓을 포괄)에 갱신해 거는 것을 권장합니다. 체결
-                      여부는 오늘 장이 마감되어 종가(및 장중 고가)가 입력되면 자동으로 기록됩니다.
+                  <div className="rounded-xl border-l-4 border-[var(--negative)] bg-[var(--negative-soft)] px-3 py-2">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[400px] text-xs">
+                        <thead className="bg-white/40 text-left dark:bg-black/20">
+                          <tr>
+                            <th className="whitespace-nowrap px-2 py-1.5">종류</th>
+                            <th className="whitespace-nowrap px-2 py-1.5">주문 방식</th>
+                            <th className="whitespace-nowrap px-2 py-1.5">지정가</th>
+                            <th className="whitespace-nowrap px-2 py-1.5">수량</th>
+                            <th className="whitespace-nowrap px-2 py-1.5">금액</th>
+                            <th className="whitespace-nowrap px-2 py-1.5">T 변화</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-t border-white/40 dark:border-black/20">
+                            <td className="whitespace-nowrap px-2 py-1.5 font-medium text-[var(--negative)]">쿼터매도</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">별지점 LOC</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">${fmt(sellPlan.quarterSell.limitPrice)}</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(sellPlan.quarterSell.qty), 0)}주</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">${fmt(sellPlan.quarterSell.limitPrice * sellPlan.quarterSell.qty)}</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">직전T × 0.75</td>
+                          </tr>
+                          <tr className="border-t border-white/40 dark:border-black/20">
+                            <td className="whitespace-nowrap px-2 py-1.5 font-medium text-[var(--negative)]">잔여매도</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">평단+{sellPlan.remainderSell.fixedRate}% 지정가</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">${fmt(sellPlan.remainderSell.limitPrice)}</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">{fmt(Math.round(sellPlan.remainderSell.qty), 0)}주</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">${fmt(sellPlan.remainderSell.limitPrice * sellPlan.remainderSell.qty)}</td>
+                            <td className="whitespace-nowrap px-2 py-1.5">변화 없음</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-1.5 text-xs text-zinc-500">
+                      장 시작 전 매일 갱신해 지정가 주문을 걸어두세요. 체결 여부는 종가·고가 입력 후 자동 기록됩니다.
                     </p>
                   </div>
                 ) : (
@@ -491,11 +514,11 @@ export default async function ProjectDashboard({
               <li className="text-zinc-500">체결 내역이 없습니다.</li>
             ) : (
               allTrades.slice(0, 20).map((t) => (
-                <li key={t.id} className="flex flex-col gap-0.5 rounded-xl bg-zinc-100/80 px-3 py-1.5 dark:bg-zinc-800/60">
+                <li key={t.id} className={`flex flex-col gap-0.5 rounded-xl px-3 py-1.5 border-l-4 ${t.side === "buy" ? "bg-[var(--positive-soft)] border-[var(--positive)]" : "bg-[var(--negative-soft)] border-[var(--negative)]"}`}>
                   <div className="flex justify-between gap-2">
                     <span>
                       {t.date} ·{" "}
-                      <span className={t.side === "buy" ? "text-[var(--positive)]" : "text-[var(--negative)]"}>
+                      <span className={`font-semibold ${t.side === "buy" ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
                         {t.side === "buy" ? "매수" : "매도"}
                       </span>{" "}
                       ({t.tradeKind})
