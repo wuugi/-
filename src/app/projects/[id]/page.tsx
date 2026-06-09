@@ -145,7 +145,7 @@ export default async function ProjectDashboard({
           <select
             name="crashProtectionPct"
             defaultValue={String(strategy.crashProtectionPct)}
-            className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1 text-sm dark:border-zinc-700"
           >
             <option value="20">20%</option>
             <option value="30">30%</option>
@@ -323,7 +323,7 @@ export default async function ProjectDashboard({
                 name="date"
                 defaultValue={todayIso()}
                 required
-                className="rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
               />
             </label>
             <label className="flex flex-1 flex-col gap-1 text-sm">
@@ -334,7 +334,7 @@ export default async function ProjectDashboard({
                 step="0.01"
                 min={0}
                 required
-                className="rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
               />
             </label>
             <button type="submit" className="shrink-0 whitespace-nowrap rounded-full bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-shadow hover:shadow-md">
@@ -443,7 +443,7 @@ export default async function ProjectDashboard({
                   name="date"
                   defaultValue={todayIso()}
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
                 />
               </label>
               <label className="flex min-w-0 flex-1 flex-col gap-1">
@@ -451,7 +451,7 @@ export default async function ProjectDashboard({
                 <select
                   name="side"
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
                 >
                   <option value="buy">매수</option>
                   <option value="sell">매도</option>
@@ -463,7 +463,7 @@ export default async function ProjectDashboard({
               <select
                 name="tradeKind"
                 required
-                className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
               >
                 <optgroup label="매수">
                   <option value="first">첫매수 (T 0 → 진행)</option>
@@ -486,7 +486,7 @@ export default async function ProjectDashboard({
                   step="0.01"
                   min={0}
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
                 />
               </label>
               <label className="flex min-w-0 flex-1 flex-col gap-1">
@@ -497,7 +497,7 @@ export default async function ProjectDashboard({
                   step="0.0001"
                   min={0}
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
                 />
               </label>
             </div>
