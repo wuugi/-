@@ -72,6 +72,10 @@ export default async function ProjectDashboard({
   const prevClose = latestPrice?.closePrice ?? 0;
   const latestPriceIsTradingDay = latestPrice ? isUsMarketTradingDay(latestPrice.date) : false;
 
+  const totalBought = allTrades
+    .filter((t) => t.side === "buy")
+    .reduce((sum, t) => sum + t.price * t.qty, 0);
+
   const phase = getPhase(tValue, strategy.splitCount);
   const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
   const starPoint = avgPrice > 0 ? getStarPoint(avgPrice, starPercent) : null;
@@ -122,13 +126,14 @@ export default async function ProjectDashboard({
       </header>
 
       {/* 현재 상태 요약 */}
-      <section className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <section className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
         <StatCard label="사이클" value={currentCycle ? `${currentCycle.cycleNo}회차` : "-"} />
         <StatCard label="T값" value={fmt(tValue, 4)} />
         <StatCard label="전후반전" value={phase} />
         <StatCard label="별%" value={`${fmt(starPercent)}%`} />
         <StatCard label="평단가" value={avgPrice > 0 ? `$${fmt(avgPrice)}` : "-"} />
         <StatCard label="보유수량" value={qty > 0 ? fmt(Math.round(qty), 0) : "0"} />
+        <StatCard label="누적 매수금액" value={totalBought > 0 ? `$${fmt(totalBought, 0)}` : "-"} />
       </section>
 
       {/* 폭락률 보호 구간 표시 + 수정 */}
@@ -487,7 +492,7 @@ export default async function ProjectDashboard({
             ) : (
               allTrades.slice(0, 20).map((t) => (
                 <li key={t.id} className="flex flex-col gap-0.5 rounded-xl bg-zinc-100/80 px-3 py-1.5 dark:bg-zinc-800/60">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span>
                       {t.date} ·{" "}
                       <span className={t.side === "buy" ? "text-[var(--positive)]" : "text-[var(--negative)]"}>
@@ -495,8 +500,11 @@ export default async function ProjectDashboard({
                       </span>{" "}
                       ({t.tradeKind})
                     </span>
-                    <span>
-                      ${fmt(t.price)} x {fmt(Math.round(t.qty), 0)}주
+                    <span className="shrink-0 text-right">
+                      <span className="font-medium">${fmt(t.price * t.qty)}</span>
+                      <span className="ml-1 text-xs text-zinc-500">
+                        ({fmt(t.price)} × {fmt(Math.round(t.qty), 0)}주)
+                      </span>
                     </span>
                   </div>
                   <span className="text-xs text-zinc-500">
