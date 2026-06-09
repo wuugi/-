@@ -262,14 +262,16 @@ export default async function ProjectDashboard({
                     T값이 1 미만(첫 매수 단계)에서는 매도 지정가를 걸지 않습니다. T값이 1 이상이 되면 매일 갱신됩니다.
                   </p>
                 ) : sellPlan ? (
-                  <div className="flex flex-col gap-2 rounded-xl bg-[var(--accent-soft)] px-3 py-2">
+                  <div className="flex flex-col gap-2 rounded-xl border-l-4 border-[var(--negative)] bg-[var(--negative-soft)] px-3 py-2">
                     <p>
-                      <span className="font-semibold">쿼터매도 (보유의 1/4)</span>: 별지점 ${fmt(sellPlan.quarterSell.limitPrice)}{" "}
-                      LOC 매도 {fmt(Math.round(sellPlan.quarterSell.qty), 0)}주 · 체결 시 T = 직전T × 0.75
+                      <span className="font-semibold text-[var(--negative)]">쿼터매도 (보유의 1/4)</span>
+                      <span className="ml-1">: 별지점 ${fmt(sellPlan.quarterSell.limitPrice)}{" "}
+                      LOC 매도 {fmt(Math.round(sellPlan.quarterSell.qty), 0)}주 · 체결 시 T = 직전T × 0.75</span>
                     </p>
                     <p>
-                      <span className="font-semibold">잔여 지정가 매도 (보유의 3/4)</span>: 평단 + {sellPlan.remainderSell.fixedRate}%
-                      = ${fmt(sellPlan.remainderSell.limitPrice)} 지정가 매도 {fmt(Math.round(sellPlan.remainderSell.qty), 0)}주 · T 변화 없음
+                      <span className="font-semibold text-[var(--negative)]">잔여 지정가 매도 (보유의 3/4)</span>
+                      <span className="ml-1">: 평단 + {sellPlan.remainderSell.fixedRate}%
+                      = ${fmt(sellPlan.remainderSell.limitPrice)} 지정가 매도 {fmt(Math.round(sellPlan.remainderSell.qty), 0)}주 · T 변화 없음</span>
                     </p>
                     <p className="text-xs text-zinc-500">
                       지정가 주문은 장 시작 전(프리마켓~정규장~애프터마켓을 포괄)에 갱신해 거는 것을 권장합니다. 체결
