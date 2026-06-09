@@ -35,11 +35,11 @@ export function ThemeToggle() {
   return (
     <button
       onClick={cycle}
-      className="fixed top-3 right-4 z-50 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-[var(--surface)] text-[var(--foreground)] border border-[color-mix(in_srgb,var(--foreground)_15%,transparent)] shadow-sm hover:opacity-80 transition-opacity"
+      className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-[var(--surface)] text-[var(--foreground)] border border-[color-mix(in_srgb,var(--foreground)_15%,transparent)] shadow-sm hover:opacity-80 transition-opacity"
       aria-label="테마 전환"
     >
       <span>{icon}</span>
-      <span>{label}</span>
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }
