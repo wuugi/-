@@ -29,6 +29,8 @@ export async function fetchRecentClosePrices(ticker: string, days = 10): Promise
   const highs: Array<number | null> = quote.high ?? [];
   const lows: Array<number | null> = quote.low ?? [];
   const gmtoffset: number = result?.meta?.gmtoffset ?? 0;
+  const regularMarketPrice: number | null = result?.meta?.regularMarketPrice ?? null;
+  const regularMarketTime: number | null = result?.meta?.regularMarketTime ?? null;
 
   // 거래소 현지 기준 "오늘" 날짜가 장중이면 종가가 아직 확정되지 않으므로 제외한다.
   // 거래소 정규장 마감(16:00 ET)으로부터 1시간 이상 지난 17:00 이후에만 오늘 데이터를 허용한다.
@@ -37,9 +39,28 @@ export async function fetchRecentClosePrices(ticker: string, days = 10): Promise
   const exchangeHour = nowLocalDate.getUTCHours(); // gmtoffset이 이미 반영된 "현지 시각"
   const marketClosed = exchangeHour >= 17; // 17:00 이후 = 마감 확정
 
+  // Yahoo Finance가 당일 종가 배열에 null을 넣는 경우가 있다.
+  // meta.regularMarketTime이 장 마감 시각(16:00 ET = closeHourUtc)과 일치하면
+  // meta.regularMarketPrice를 해당 날의 종가 fallback으로 사용한다.
+  const month = nowLocalDate.getUTCMonth() + 1;
+  const isDst = month >= 3 && month <= 11;
+  const closeHourUtc = isDst ? 20 : 21;
+  const regularMarketDate = regularMarketTime
+    ? new Date((regularMarketTime + gmtoffset) * 1000).toISOString().slice(0, 10)
+    : null;
+  const regularMarketIsClose = regularMarketTime
+    ? new Date(regularMarketTime * 1000).getUTCHours() === closeHourUtc
+    : false;
+
   const prices: FetchedClosePrice[] = [];
   for (let i = 0; i < timestamps.length; i++) {
-    const close = closes[i];
+    let close = closes[i];
+    // close가 null이면 meta.regularMarketPrice로 대체 (장 마감 직후 Yahoo 지연 대응)
+    if (close == null && regularMarketPrice != null && regularMarketIsClose) {
+      const localMs = (timestamps[i] + gmtoffset) * 1000;
+      const barDate = new Date(localMs).toISOString().slice(0, 10);
+      if (barDate === regularMarketDate) close = regularMarketPrice;
+    }
     if (close == null) continue;
     const localMs = (timestamps[i] + gmtoffset) * 1000;
     const date = new Date(localMs).toISOString().slice(0, 10);
