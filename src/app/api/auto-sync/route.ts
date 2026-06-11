@@ -2,21 +2,34 @@ import { db } from "@/db/client";
 import { strategies } from "@/db/schema";
 import { fetchAndRecordPrice } from "@/app/actions-price";
 import { autoRecordTodayFills } from "@/app/actions";
-// 서버 인스턴스당 3시간에 한 번만 동기화하도록 막는 메모리 게이트.
-// Vercel 서버리스 환경에선 콜드 스타트로 리셋될 수 있지만, actions 쪽이 "이미
-// 기록됨" 체크를 DB 수준에서 처리하므로 중복 기록은 발생하지 않는다.
+
 const SYNC_INTERVAL_MS = 3 * 60 * 60 * 1000;
 let lastSyncedAt = 0;
 
-/**
- * 사용자가 사이트에 접속했을 때 클라이언트에서 호출하는 동기화 엔드포인트.
- * 1) 전략에 등록된 각 티커의 최근 종가를 자동 수집하고
- * 2) 각 전략에 대해 "오늘 체결 자동 기록"을 시도한다.
- * 휴장일·중복 기록·체결 없음 등은 actions 쪽에서 에러를 던지므로 결과만 모아 보고한다.
- */
+function lastMarketCloseMs(): number {
+  const now = Date.now();
+  for (let daysAgo = 0; daysAgo <= 4; daysAgo++) {
+    const d = new Date(now - daysAgo * 86400000);
+    const dow = d.getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    const month = d.getUTCMonth() + 1;
+    const isDst = month >= 3 && month <= 11;
+    const closeHourUtc = isDst ? 20 : 21;
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    const closeMs = new Date(`${yyyy}-${mm}-${dd}T${String(closeHourUtc).padStart(2, "0")}:00:00Z`).getTime();
+    if (closeMs <= now) return closeMs;
+  }
+  return 0;
+}
+
 export async function POST() {
-  if (Date.now() - lastSyncedAt < SYNC_INTERVAL_MS) {
-    return Response.json({ skipped: true, reason: "최근 3시간 내에 이미 동기화를 시도했습니다." });
+  const recentClose = lastMarketCloseMs();
+  const withinInterval = Date.now() - lastSyncedAt < SYNC_INTERVAL_MS;
+  const syncedAfterClose = lastSyncedAt >= recentClose;
+  if (withinInterval && syncedAfterClose) {
+    return Response.json({ skipped: true, reason: "최근 장 마감 이후 이미 동기화를 시도했습니다." });
   }
   lastSyncedAt = Date.now();
 
