@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { autoRecordTodayFills, recordTrade, updateCrashProtection } from "../../actions";
+import { recordTrade, updateCrashProtection } from "../../actions";
+import { AutoRecordButton } from "../../auto-record-button";
 import { fetchAndRecordPrice, recordPriceSnapshot } from "../../actions-price";
 import {
   getCurrentCycle,
@@ -419,15 +420,7 @@ export default async function ProjectDashboard({
         <div className="rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm dark:border-zinc-800">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">거래 입력</h2>
-            <form action={autoRecordTodayFills}>
-              <input type="hidden" name="strategyId" value={strategy.id} />
-              <button
-                type="submit"
-                className="whitespace-nowrap rounded-full border border-[var(--accent)]/40 px-3.5 py-1.5 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
-              >
-                최근 종가 기준 자동 기록
-              </button>
-            </form>
+            <AutoRecordButton strategyId={strategy.id} />
           </div>
           <p className="mb-3 -mt-1 text-xs text-zinc-500">
             제안된 사다리/매도 지정가에 종가가 닿으면 자동으로 체결로 판단해 기록합니다. 자동 판단이 실제 체결과 다르면

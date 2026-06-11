@@ -53,8 +53,8 @@ export async function POST() {
     const fd = new FormData();
     fd.set("strategyId", String(strategy.id));
     try {
-      await autoRecordTodayFills(fd);
-      fillResults.push({ strategyId: strategy.id, name: strategy.name, status: "ok" });
+      const result = await autoRecordTodayFills(null, fd);
+      fillResults.push({ strategyId: strategy.id, name: strategy.name, status: result.ok ? "ok" : "skipped", message: result.message });
     } catch (e) {
       fillResults.push({
         strategyId: strategy.id,
