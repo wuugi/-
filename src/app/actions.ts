@@ -158,8 +158,8 @@ export async function recordTrade(formData: FormData) {
   const [latestHoldings] = await db
     .select()
     .from(holdingsDaily)
-    .where(eq(holdingsDaily.strategyId, strategyId))
-    .orderBy(desc(holdingsDaily.id))
+    .where(and(eq(holdingsDaily.strategyId, strategyId), lt(holdingsDaily.date, date)))
+    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
     .limit(1);
 
   const tBefore = latestHoldings?.tValue ?? 0;
@@ -178,44 +178,18 @@ export async function recordTrade(formData: FormData) {
     note,
   });
 
-  // 전체 체결 내역으로 평단가/보유수량/예수금 재계산
-  const allTrades = await db
-    .select()
-    .from(trades)
-    .where(eq(trades.strategyId, strategyId))
-    .orderBy(asc(trades.date), asc(trades.id));
-
-  let qtyHeld = 0;
-  let avgPrice = 0;
-  let cashBalance = strategy.principal;
-
-  for (const t of allTrades) {
-    if (t.side === "buy") {
-      const totalCost = avgPrice * qtyHeld + t.price * t.qty;
-      qtyHeld += t.qty;
-      avgPrice = qtyHeld > 0 ? totalCost / qtyHeld : 0;
-      cashBalance -= t.price * t.qty;
-    } else {
-      qtyHeld -= t.qty;
-      cashBalance += t.price * t.qty;
-      if (qtyHeld <= 0) {
-        qtyHeld = 0;
-        avgPrice = 0;
-      }
-    }
-  }
-
-  await db.insert(holdingsDaily).values({
-    strategyId,
-    date,
-    avgPrice,
-    qty: qtyHeld,
-    cashBalance,
-    tValue: tAfter,
-  });
+  // 삽입 후 전체 replay: 과거 날짜 입력 등으로 T값 순서가 틀릴 수 있으므로 전체 재계산
+  await replayTrades(strategyId);
 
   // 매도 체결로 보유 수량이 0이 되면 현재 사이클을 완료 처리하고 T=0인 새 사이클을 시작한다
-  if (side === "sell" && qtyHeld === 0 && activeCycle) {
+  const [latestAfterReplay] = await db
+    .select()
+    .from(holdingsDaily)
+    .where(eq(holdingsDaily.strategyId, strategyId))
+    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
+    .limit(1);
+
+  if (side === "sell" && (latestAfterReplay?.qty ?? 0) === 0 && activeCycle) {
     await db
       .update(cycles)
       .set({ status: "완료", completedAt: date })
@@ -226,15 +200,6 @@ export async function recordTrade(formData: FormData) {
       cycleNo: activeCycle.cycleNo + 1,
       status: "진행중",
       startedAt: date,
-    });
-
-    await db.insert(holdingsDaily).values({
-      strategyId,
-      date,
-      avgPrice: 0,
-      qty: 0,
-      cashBalance,
-      tValue: 0,
     });
   }
 
@@ -441,8 +406,7 @@ export async function autoRecordTodayFills(
 }
 
 /**
- * 체결 기록 1건을 삭제하고, 해당 전략의 holdingsDaily를 모두 재계산한다.
- * holdingsDaily는 trades 순서대로 replay해서 전부 다시 쓴다.
+ * 체결 기록 1건을 삭제하고, 해당 전략의 모든 trades T값과 holdingsDaily를 처음부터 재계산한다.
  */
 export async function deleteTrade(formData: FormData) {
   const tradeId = Number(formData.get("tradeId"));
@@ -451,11 +415,21 @@ export async function deleteTrade(formData: FormData) {
 
   await db.delete(trades).where(and(eq(trades.id, tradeId), eq(trades.strategyId, strategyId)));
 
-  // holdingsDaily 전체 재계산
-  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
+  await replayTrades(strategyId);
 
+  revalidatePath("/");
+  revalidatePath(`/projects/${strategyId}`);
+}
+
+/**
+ * 전략의 모든 체결 기록을 날짜·id 순으로 replay해
+ * trades.tBefore/tAfter와 holdingsDaily를 처음부터 재계산한다.
+ */
+async function replayTrades(strategyId: number) {
   const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
   if (!strategy) throw new Error("전략 없음");
+
+  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
 
   const allTrades = await db.select().from(trades)
     .where(eq(trades.strategyId, strategyId))
@@ -464,8 +438,16 @@ export async function deleteTrade(formData: FormData) {
   let avgPrice = 0;
   let qtyHeld = 0;
   let cashBalance = strategy.principal;
+  let tValue = 0;
 
   for (const t of allTrades) {
+    const tBefore = tValue;
+    const tAfter = applyTDelta(tBefore, t.tradeKind as TradeKind);
+    tValue = tAfter;
+
+    // trades 테이블의 T값도 정확하게 업데이트
+    await db.update(trades).set({ tBefore, tAfter }).where(eq(trades.id, t.id));
+
     if (t.side === "buy") {
       const totalCost = avgPrice * qtyHeld + t.price * t.qty;
       qtyHeld += t.qty;
@@ -476,16 +458,14 @@ export async function deleteTrade(formData: FormData) {
       cashBalance += t.price * t.qty;
       if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
     }
+
     await db.insert(holdingsDaily).values({
       strategyId,
       date: t.date,
       avgPrice,
       qty: qtyHeld,
       cashBalance,
-      tValue: t.tAfter,
+      tValue: tAfter,
     });
   }
-
-  revalidatePath("/");
-  revalidatePath(`/projects/${strategyId}`);
 }
