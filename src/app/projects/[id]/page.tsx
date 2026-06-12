@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteTrade, recordTrade, updateCrashProtection } from "../../actions";
+import { recordTrade, updateCrashProtection } from "../../actions";
+import { DeleteTradeButton } from "../../delete-trade-button";
 import { AutoRecordButton } from "../../auto-record-button";
 import { fetchAndRecordPrice, recordPriceSnapshot } from "../../actions-price";
 import {
@@ -527,17 +528,7 @@ export default async function ProjectDashboard({
                     <span className="text-xs text-zinc-500">
                       T값 {fmt(t.tBefore, 4)} → {fmt(t.tAfter, 4)}
                     </span>
-                    <form action={deleteTrade}>
-                      <input type="hidden" name="tradeId" value={t.id} />
-                      <input type="hidden" name="strategyId" value={strategy.id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-zinc-400 hover:text-[var(--negative)] transition-colors"
-                        onClick={(e) => { if (!confirm("이 체결 기록을 삭제하시겠습니까?")) e.preventDefault(); }}
-                      >
-                        삭제
-                      </button>
-                    </form>
+                    <DeleteTradeButton tradeId={t.id} strategyId={strategy.id} />
                   </div>
                   {t.note ? (
                     <span className="mt-0.5 inline-block w-fit rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]">
