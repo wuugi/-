@@ -44,7 +44,7 @@ export function NewProjectModal() {
                 name="name"
                 maxLength={50}
                 placeholder="예: TQQQ 40분할 본계좌"
-                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -53,7 +53,7 @@ export function NewProjectModal() {
                 name="ticker"
                 required
                 defaultValue="TQQQ"
-                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
               >
                 <option value="TQQQ">TQQQ</option>
                 <option value="SOXL">SOXL</option>
@@ -67,7 +67,7 @@ export function NewProjectModal() {
                 required
                 min={0}
                 step="0.01"
-                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
                 placeholder="10000"
               />
             </label>
@@ -77,7 +77,7 @@ export function NewProjectModal() {
                 name="splitCount"
                 required
                 defaultValue="20"
-                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
               >
                 <option value="20">20회차</option>
                 <option value="40">40회차</option>
@@ -89,7 +89,7 @@ export function NewProjectModal() {
                 name="crashProtectionPct"
                 required
                 defaultValue="20"
-                className="rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-3 py-2 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
               >
                 <option value="20">20%</option>
                 <option value="30">30%</option>
