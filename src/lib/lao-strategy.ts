@@ -153,9 +153,12 @@ export function getFirstBuyLadder(
   crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
   const bigNumberPrice = Number((prevClose * 1.12).toFixed(2));
-  const bigNumberQty = roundQty(dailyBudget / 2 / bigNumberPrice);
-  const stepQty = roundQty(dailyBudget / 2 / 4 / prevClose);
   const stepPct = getStepPct(crashProtectionPct, 4);
+  const stepQty = roundQty(dailyBudget / 2 / 4 / prevClose);
+  // 계단 tier가 모두 0주로 버려지는 예산을 큰수 LOC에 합산
+  const stepBudgetUsed = stepQty * 4 * prevClose;
+  const bigNumberBudget = dailyBudget - stepBudgetUsed;
+  const bigNumberQty = roundQty(bigNumberBudget / bigNumberPrice);
   return [
     { level: 0, dropPct: -12, limitPrice: bigNumberPrice, qty: bigNumberQty, label: "큰수 매수(시초가 갭상승 대비)" },
     ...buildStepDownLadder(prevClose, 1, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
@@ -174,12 +177,15 @@ export function getFirstHalfLadder(
   dailyBudget: number,
   crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
-  const half = dailyBudget / 2;
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starQty = roundQty(half / 2 / buyTrigger);
-  const avgQty = roundQty(half / 2 / avgPrice);
-  const stepQty = roundQty(half / 2 / 3 / prevClose);
   const stepPct = getStepPct(crashProtectionPct, 3);
+  // 계단 tier qty 먼저 계산 (예산의 절반을 3등분한 각 tier)
+  const stepQty = roundQty(dailyBudget / 2 / 3 / prevClose);
+  const stepBudgetUsed = stepQty * 3 * prevClose;
+  // 별지점/평단가도 예산 절반을 반씩 사용, 단 계단에서 남은 예산은 별지점에 합산
+  const locHalf = (dailyBudget - stepBudgetUsed) / 2;
+  const starQty = roundQty(locHalf / buyTrigger);
+  const avgQty = roundQty(locHalf / avgPrice);
   return [
     { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
     { level: 2, dropPct: 0, limitPrice: avgPrice, qty: avgQty, label: "평단가 LOC 매수" },
@@ -198,9 +204,10 @@ export function getSecondHalfLadder(
   crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starQty = roundQty((dailyBudget / 2) / buyTrigger);
-  const stepQty = roundQty((dailyBudget / 2) / 4 / prevClose);
   const stepPct = getStepPct(crashProtectionPct, 4);
+  const stepQty = roundQty(dailyBudget / 2 / 4 / prevClose);
+  const stepBudgetUsed = stepQty * 4 * prevClose;
+  const starQty = roundQty((dailyBudget - stepBudgetUsed) / buyTrigger);
   return [
     { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
     ...buildStepDownLadder(prevClose, 2, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
