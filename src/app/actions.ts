@@ -430,3 +430,53 @@ export async function autoRecordTodayFills(
   }
   return { ok: true, message: `${date} 체결 ${planned.length}건 기록 완료.` };
 }
+
+/**
+ * 체결 기록 1건을 삭제하고, 해당 전략의 holdingsDaily를 모두 재계산한다.
+ * holdingsDaily는 trades 순서대로 replay해서 전부 다시 쓴다.
+ */
+export async function deleteTrade(formData: FormData) {
+  const tradeId = Number(formData.get("tradeId"));
+  const strategyId = Number(formData.get("strategyId"));
+  if (!tradeId || !strategyId) throw new Error("잘못된 요청");
+
+  await db.delete(trades).where(and(eq(trades.id, tradeId), eq(trades.strategyId, strategyId)));
+
+  // holdingsDaily 전체 재계산
+  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
+
+  const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
+  if (!strategy) throw new Error("전략 없음");
+
+  const allTrades = await db.select().from(trades)
+    .where(eq(trades.strategyId, strategyId))
+    .orderBy(asc(trades.date), asc(trades.id));
+
+  let avgPrice = 0;
+  let qtyHeld = 0;
+  let cashBalance = strategy.principal;
+
+  for (const t of allTrades) {
+    if (t.side === "buy") {
+      const totalCost = avgPrice * qtyHeld + t.price * t.qty;
+      qtyHeld += t.qty;
+      avgPrice = qtyHeld > 0 ? totalCost / qtyHeld : 0;
+      cashBalance -= t.price * t.qty;
+    } else {
+      qtyHeld -= t.qty;
+      cashBalance += t.price * t.qty;
+      if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
+    }
+    await db.insert(holdingsDaily).values({
+      strategyId,
+      date: t.date,
+      avgPrice,
+      qty: qtyHeld,
+      cashBalance,
+      tValue: t.tAfter,
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/projects/${strategyId}`);
+}
