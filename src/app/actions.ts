@@ -387,7 +387,16 @@ export async function autoRecordTodayFills(
   }
 
   if (filledBuyQty > 0) {
-    const buyKind: TradeKind = tValue <= 0 ? "first" : "full";
+    let buyKind: TradeKind;
+    if (tValue <= 0) {
+      buyKind = "first";
+    } else if (crashBigNumber) {
+      buyKind = "full";
+    } else {
+      // 전반전 사다리: 평단가 LOC(level 2)가 체결됐으면 full(T+1), 별지점만이면 half(T+0.5)
+      const avgTierFilled = buyLadder.some((tier) => tier.level === 2 && judgeBuyFill(tier.limitPrice, closePrice));
+      buyKind = avgTierFilled ? "full" : "half";
+    }
     planned.push({ side: "buy", tradeKind: buyKind, qty: filledBuyQty, price: closePrice, note: buyNote });
   }
 
