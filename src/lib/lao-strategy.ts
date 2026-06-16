@@ -177,15 +177,16 @@ export function getFirstHalfLadder(
 ): LadderTier[] {
   const buyTrigger = getBuyTriggerPrice(starPoint);
   const stepPct = getStepPct(crashProtectionPct, 3);
-  // 수량은 prevClose 기준으로 계산 (LOC 지정가는 체결 보장용)
-  const stepQty = roundQty(dailyBudget / 2 / 3 / prevClose);
   const locQuarter = dailyBudget / 4;
   const starQty = roundQty(locQuarter / prevClose);
   const avgQty = roundQty(locQuarter / prevClose);
+  // 단계별 하락은 평단가 기준으로 내려간다
+  // (별지점이 prevClose보다 높은 회복장에서 step이 별지점↔평단가 사이에 끼는 문제 방지)
+  const stepQty = roundQty(dailyBudget / 2 / 3 / avgPrice);
   return [
     { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
     { level: 2, dropPct: 0, limitPrice: avgPrice, qty: avgQty, label: "평단가 LOC 매수" },
-    ...buildStepDownLadder(prevClose, 3, stepQty, 3, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
+    ...buildStepDownLadder(avgPrice, 3, stepQty, 3, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
   ];
 }
 
@@ -201,12 +202,13 @@ export function getSecondHalfLadder(
 ): LadderTier[] {
   const buyTrigger = getBuyTriggerPrice(starPoint);
   const stepPct = getStepPct(crashProtectionPct, 4);
-  // 수량은 prevClose 기준으로 계산 (LOC 지정가는 체결 보장용)
-  const stepQty = roundQty(dailyBudget / 2 / 4 / prevClose);
   const starQty = roundQty(dailyBudget / 2 / prevClose);
+  // 단계별 하락은 별지점 기준으로 내려간다 (별지점이 prevClose보다 높을 때 step 순서 보장)
+  const stepBase = Math.min(buyTrigger, prevClose);
+  const stepQty = roundQty(dailyBudget / 2 / 4 / stepBase);
   return [
     { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
-    ...buildStepDownLadder(prevClose, 2, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
+    ...buildStepDownLadder(stepBase, 2, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
   ];
 }
 
