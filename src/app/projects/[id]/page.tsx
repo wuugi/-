@@ -511,7 +511,7 @@ export default async function ProjectDashboard({
                 <li key={t.id} className={`flex flex-col gap-0.5 rounded-xl px-3 py-1.5 border-l-4 ${t.side === "buy" ? "bg-[var(--positive-soft)] border-[var(--positive)]" : "bg-[var(--negative-soft)] border-[var(--negative)]"}`}>
                   <div className="flex justify-between gap-2">
                     <span>
-                      <span className="text-zinc-500">#{allTrades.length - idx}</span> {t.date} ·{" "}
+                      <span className="font-bold text-[var(--accent)]">#{allTrades.length - idx}</span> {t.date} ·{" "}
                       <span className={`font-semibold ${t.side === "buy" ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
                         {t.side === "buy" ? "매수" : "매도"}
                       </span>{" "}
