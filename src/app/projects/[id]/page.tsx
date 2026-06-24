@@ -507,11 +507,11 @@ export default async function ProjectDashboard({
             {allTrades.length === 0 ? (
               <li className="text-zinc-500">체결 내역이 없습니다.</li>
             ) : (
-              allTrades.slice(0, 20).map((t) => (
+              allTrades.slice(0, 20).map((t, idx) => (
                 <li key={t.id} className={`flex flex-col gap-0.5 rounded-xl px-3 py-1.5 border-l-4 ${t.side === "buy" ? "bg-[var(--positive-soft)] border-[var(--positive)]" : "bg-[var(--negative-soft)] border-[var(--negative)]"}`}>
                   <div className="flex justify-between gap-2">
                     <span>
-                      {t.date} ·{" "}
+                      <span className="text-zinc-500">#{allTrades.length - idx}</span> {t.date} ·{" "}
                       <span className={`font-semibold ${t.side === "buy" ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
                         {t.side === "buy" ? "매수" : "매도"}
                       </span>{" "}
