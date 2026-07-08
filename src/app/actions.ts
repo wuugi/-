@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db/client";
-import { strategies, cycles, trades, holdingsDaily, priceSnapshots } from "@/db/schema";
-import { and, eq, asc, desc, lt } from "drizzle-orm";
+import { strategies, cycles, trades, holdingsDaily, priceSnapshots, autoRecordSkipped } from "@/db/schema";
+import { sql, and, eq, asc, desc, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isUsMarketTradingDay, todayIsoKst, usMarketCloseUtcMs } from "@/lib/market-date";
@@ -110,6 +110,8 @@ export async function deleteStrategy(formData: FormData) {
   await db.delete(trades).where(eq(trades.strategyId, strategyId));
   await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
   await db.delete(cycles).where(eq(cycles.strategyId, strategyId));
+  await ensureSkippedTable();
+  await db.delete(autoRecordSkipped).where(eq(autoRecordSkipped.strategyId, strategyId));
   await db.delete(strategies).where(eq(strategies.id, strategyId));
 
   revalidatePath("/");
@@ -242,6 +244,66 @@ export async function recordTrade(formData: FormData) {
   revalidatePath(`/projects/${strategyId}`);
 }
 
+/** auto_record_skipped 테이블이 없으면 생성 (마이그레이션 대신 런타임 생성) */
+async function ensureSkippedTable() {
+  await db.run(sql`
+    CREATE TABLE IF NOT EXISTS auto_record_skipped (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strategy_id INTEGER NOT NULL,
+      date TEXT NOT NULL
+    )
+  `);
+}
+
+/** 체결 기록을 삭제하고 해당 날짜를 자동 기록 차단 목록에 추가한다 */
+export async function deleteTrade(formData: FormData) {
+  const tradeId = Number(formData.get("tradeId"));
+  const strategyId = Number(formData.get("strategyId"));
+  if (!tradeId || !strategyId) throw new Error("잘못된 요청");
+
+  const [target] = await db.select().from(trades).where(and(eq(trades.id, tradeId), eq(trades.strategyId, strategyId))).limit(1);
+  if (!target) throw new Error("체결 기록을 찾을 수 없습니다.");
+  const deletedDate = target.date;
+
+  await db.delete(trades).where(and(eq(trades.id, tradeId), eq(trades.strategyId, strategyId)));
+
+  // 해당 날짜를 자동 기록 차단 목록에 추가 (이미 있어도 중복 허용 — 조회 시 존재 여부만 확인)
+  await ensureSkippedTable();
+  await db.insert(autoRecordSkipped).values({ strategyId, date: deletedDate });
+
+  // T값 / 평단가 / 예수금 전체 재계산
+  const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
+  if (!strategy) throw new Error("전략 없음");
+
+  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
+
+  const allTrades = await db.select().from(trades)
+    .where(eq(trades.strategyId, strategyId))
+    .orderBy(asc(trades.date), asc(trades.id));
+
+  let avgPrice = 0, qtyHeld = 0, cashBalance = strategy.principal, tValue = 0;
+  for (const t of allTrades) {
+    const tBefore = tValue;
+    const tAfter = applyTDelta(tBefore, t.tradeKind as TradeKind);
+    tValue = tAfter;
+    await db.update(trades).set({ tBefore, tAfter }).where(eq(trades.id, t.id));
+    if (t.side === "buy") {
+      const totalCost = avgPrice * qtyHeld + t.price * t.qty;
+      qtyHeld += t.qty;
+      avgPrice = qtyHeld > 0 ? totalCost / qtyHeld : 0;
+      cashBalance -= t.price * t.qty;
+    } else {
+      qtyHeld -= t.qty;
+      cashBalance += t.price * t.qty;
+      if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
+    }
+    await db.insert(holdingsDaily).values({ strategyId, date: t.date, avgPrice, qty: qtyHeld, cashBalance, tValue: tAfter });
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/projects/${strategyId}`);
+}
+
 /**
  * 최근 종가를 기준으로 "오늘의 매수/매도 추천" 화면과 동일한 방식으로 LOC/지정가 체결 여부를 판단하고,
  * 체결로 판단된 만큼 자동으로 체결 기록을 추가한다 (이미 같은 날짜·종류로 기록된 건은 건너뛴다).
@@ -350,6 +412,17 @@ export async function autoRecordTodayFills(formData: FormData) {
   // 같은 날짜에 이미 (수동/자동) 기록이 있으면 자동 기록을 건너뛴다.
   // T값/평단가 등은 하루에 한 번만 변하므로, 재실행 시 변경된 상태로 사다리를
   // 다시 계산해 같은 종가에 대해 또 다른 "체결"을 만들어내는 연쇄 오기록을 막기 위함이다.
+  // 사용자가 의도적으로 삭제한 날짜는 자동 재기록하지 않는다
+  await ensureSkippedTable();
+  const skipped = await db
+    .select()
+    .from(autoRecordSkipped)
+    .where(and(eq(autoRecordSkipped.strategyId, strategyId), eq(autoRecordSkipped.date, date)))
+    .limit(1);
+  if (skipped.length > 0) {
+    return; // 사용자가 이 날짜를 삭제했음 — 자동 재기록 차단
+  }
+
   const existingTradesForDate = await db
     .select()
     .from(trades)

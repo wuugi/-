@@ -54,6 +54,15 @@ export const trades = sqliteTable("trades", {
   note: text("note"), // 특이사항 태그 (예: 폭락 대응 큰수 매수, 갭상승 대응 큰수 매수 등 자동 판단 사유)
 });
 
+// 사용자가 의도적으로 삭제한 날짜 — 자동 기록이 재-입력하지 않도록 차단
+export const autoRecordSkipped = sqliteTable("auto_record_skipped", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  strategyId: integer("strategy_id")
+    .notNull()
+    .references(() => strategies.id),
+  date: text("date").notNull(), // ISO date (YYYY-MM-DD)
+});
+
 // 일별 보유 현황 스냅샷 (평단가/보유수량/예수금/T값)
 export const holdingsDaily = sqliteTable("holdings_daily", {
   id: integer("id").primaryKey({ autoIncrement: true }),
