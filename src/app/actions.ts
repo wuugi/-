@@ -312,12 +312,15 @@ export async function deleteTrade(formData: FormData) {
  *  - 잔여 지정가 매도: 장중 고가 데이터가 있으면 고가 기준으로, 없으면 종가 기준으로 체결 가능성을 판단해
  *    지정가에 체결된 것으로 기록한다 (실제 체결가가 더 좋았을 수 있으므로 거래 입력에서 보정 가능)
  */
-export async function autoRecordTodayFills(formData: FormData) {
+export async function autoRecordTodayFills(
+  _prevState: { ok: boolean; message: string } | null,
+  formData: FormData
+): Promise<{ ok: boolean; message: string }> {
   const strategyId = Number(formData.get("strategyId"));
-  if (!strategyId) throw new Error("전략을 찾을 수 없습니다.");
+  if (!strategyId) return { ok: false, message: "전략을 찾을 수 없습니다." };
 
   const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
-  if (!strategy) throw new Error("전략을 찾을 수 없습니다.");
+  if (!strategy) return { ok: false, message: "전략을 찾을 수 없습니다." };
 
   const ticker = strategy.ticker as Ticker;
   const crashProtectionPct = strategy.crashProtectionPct as CrashProtectionPct;
@@ -337,7 +340,7 @@ export async function autoRecordTodayFills(formData: FormData) {
     .limit(1);
 
   if (!latestPrice) {
-    throw new Error("종가 데이터가 없어 자동 기록할 수 없습니다. 먼저 종가를 입력하세요.");
+    return { ok: false, message: "종가 데이터가 없어 자동 기록할 수 없습니다. 먼저 종가를 입력하세요." };
   }
 
   const avgPrice = latestHoldings?.avgPrice ?? 0;
@@ -353,12 +356,11 @@ export async function autoRecordTodayFills(formData: FormData) {
   const createdAtMs = new Date(strategy.createdAt).getTime();
   const marketCloseMs = usMarketCloseUtcMs(date);
   if (createdAtMs > marketCloseMs) {
-    // 정보성: 에러가 아니라 조용히 건너뜀
-    return;
+    return { ok: true, message: "전략 생성 이전 날짜라 건너뜀" };
   }
 
   if (!isUsMarketTradingDay(date)) {
-    return; // 휴장일도 조용히 건너뜀
+    return { ok: true, message: "휴장일이라 건너뜀" };
   }
 
   const closePrice = latestPrice.closePrice;
@@ -375,9 +377,7 @@ export async function autoRecordTodayFills(formData: FormData) {
     .limit(1);
 
   if (!prevPriceSnapshot) {
-    throw new Error(
-      `${date}의 전일 종가 데이터가 없어 사다리를 계산할 수 없습니다. 직전 거래일의 종가를 먼저 입력하세요.`
-    );
+    return { ok: false, message: `${date}의 전일 종가 데이터가 없어 사다리를 계산할 수 없습니다.` };
   }
 
   const prevClose = prevPriceSnapshot.closePrice;
@@ -420,7 +420,7 @@ export async function autoRecordTodayFills(formData: FormData) {
     .where(and(eq(autoRecordSkipped.strategyId, strategyId), eq(autoRecordSkipped.date, date)))
     .limit(1);
   if (skipped.length > 0) {
-    return; // 사용자가 이 날짜를 삭제했음 — 자동 재기록 차단
+    return { ok: true, message: "사용자가 삭제한 날짜라 자동 기록 건너뜀" };
   }
 
   const existingTradesForDate = await db
@@ -428,7 +428,7 @@ export async function autoRecordTodayFills(formData: FormData) {
     .from(trades)
     .where(and(eq(trades.strategyId, strategyId), eq(trades.date, date)));
   if (existingTradesForDate.length > 0) {
-    return; // 이미 기록된 날짜 — 조용히 건너뜀
+    return { ok: true, message: "이미 기록된 날짜" };
   }
 
   const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number; note?: string }> = [];
@@ -491,7 +491,7 @@ export async function autoRecordTodayFills(formData: FormData) {
   }
 
   if (planned.length === 0) {
-    return; // 종가가 어떤 지정가에도 닿지 않음 — 체결 없음, 조용히 건너뜀
+    return { ok: true, message: `${date} 체결 없음 (종가가 지정가에 닿지 않음)` };
   }
 
   for (const p of planned) {
@@ -505,4 +505,6 @@ export async function autoRecordTodayFills(formData: FormData) {
     if (p.note) fd.set("note", p.note);
     await recordTrade(fd);
   }
+
+  return { ok: true, message: `${date} ${planned.length}건 자동 기록 완료` };
 }
