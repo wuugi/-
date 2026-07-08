@@ -96,8 +96,10 @@ export interface LadderTier {
   dropPct: number;
   /** 해당 단계의 LOC 지정가 */
   limitPrice: number;
-  /** 해당 단계에서 매수할 주식 수 */
+  /** 해당 단계에서 매수할 주식 수 (반올림된 표시용) */
   qty: number;
+  /** 해당 단계에 배정된 예산 (체결 수량 역산용 — 단계별 반올림 오차를 피하기 위해 사용) */
+  budget: number;
   /** 매수 사유 라벨 */
   label: string;
 }
@@ -125,7 +127,8 @@ function buildStepDownLadder(
   qtyEach: number,
   count: number,
   stepPct: number,
-  label: string
+  label: string,
+  budgetEach = 0
 ): LadderTier[] {
   const tiers: LadderTier[] = [];
   for (let i = 0; i < count; i++) {
@@ -136,6 +139,7 @@ function buildStepDownLadder(
       dropPct,
       limitPrice: Number((basePrice * (1 - dropPct / 100)).toFixed(2)),
       qty: qtyEach,
+      budget: budgetEach,
       label,
     });
   }
@@ -153,12 +157,14 @@ export function getFirstBuyLadder(
   crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
   const bigNumberPrice = Number((prevClose * 1.12).toFixed(2));
-  const bigNumberQty = roundQty(dailyBudget / 2 / bigNumberPrice);
-  const stepQty = roundQty(dailyBudget / 2 / 4 / prevClose);
+  const bigNumberBudget = dailyBudget / 2;
+  const bigNumberQty = roundQty(bigNumberBudget / bigNumberPrice);
+  const stepBudget = dailyBudget / 2 / 4;
+  const stepQty = roundQty(stepBudget / prevClose);
   const stepPct = getStepPct(crashProtectionPct, 4);
   return [
-    { level: 0, dropPct: -12, limitPrice: bigNumberPrice, qty: bigNumberQty, label: "큰수 매수(시초가 갭상승 대비)" },
-    ...buildStepDownLadder(prevClose, 1, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
+    { level: 0, dropPct: -12, limitPrice: bigNumberPrice, qty: bigNumberQty, budget: bigNumberBudget, label: "큰수 매수(시초가 갭상승 대비)" },
+    ...buildStepDownLadder(prevClose, 1, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`, stepBudget),
   ];
 }
 
@@ -176,14 +182,17 @@ export function getFirstHalfLadder(
 ): LadderTier[] {
   const half = dailyBudget / 2;
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starQty = roundQty(half / 2 / buyTrigger);
-  const avgQty = roundQty(half / 2 / avgPrice);
-  const stepQty = roundQty(half / 2 / 3 / prevClose);
+  const starBudget = half / 2;
+  const avgBudget = half / 2;
+  const stepBudget = half / 2 / 3;
+  const starQty = roundQty(starBudget / buyTrigger);
+  const avgQty = roundQty(avgBudget / avgPrice);
+  const stepQty = roundQty(stepBudget / prevClose);
   const stepPct = getStepPct(crashProtectionPct, 3);
   return [
-    { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
-    { level: 2, dropPct: 0, limitPrice: avgPrice, qty: avgQty, label: "평단가 LOC 매수" },
-    ...buildStepDownLadder(prevClose, 3, stepQty, 3, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
+    { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, budget: starBudget, label: "별지점 LOC 매수" },
+    { level: 2, dropPct: 0, limitPrice: avgPrice, qty: avgQty, budget: avgBudget, label: "평단가 LOC 매수" },
+    ...buildStepDownLadder(prevClose, 3, stepQty, 3, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`, stepBudget),
   ];
 }
 
@@ -198,12 +207,14 @@ export function getSecondHalfLadder(
   crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starQty = roundQty((dailyBudget / 2) / buyTrigger);
-  const stepQty = roundQty((dailyBudget / 2) / 4 / prevClose);
+  const starBudget = dailyBudget / 2;
+  const stepBudget = dailyBudget / 2 / 4;
+  const starQty = roundQty(starBudget / buyTrigger);
+  const stepQty = roundQty(stepBudget / prevClose);
   const stepPct = getStepPct(crashProtectionPct, 4);
   return [
-    { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, label: "별지점 LOC 매수" },
-    ...buildStepDownLadder(prevClose, 2, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`),
+    { level: 1, dropPct: 0, limitPrice: buyTrigger, qty: starQty, budget: starBudget, label: "별지점 LOC 매수" },
+    ...buildStepDownLadder(prevClose, 2, stepQty, 4, stepPct, `단계별 하락 매수(폭락률 보호 ${crashProtectionPct}% 구간)`, stepBudget),
   ];
 }
 

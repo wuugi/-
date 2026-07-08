@@ -362,6 +362,7 @@ export async function autoRecordTodayFills(formData: FormData) {
 
   let filledBuyQty = 0;
   let buyNote: string | undefined;
+  let filledTiers: typeof buyLadder = [];
 
   if (crashBigNumber) {
     // 폭락 대응 큰수 매수: 종가가 큰수 지정가 이하로 마감되면 통합 LOC 매수로 체결
@@ -370,9 +371,11 @@ export async function autoRecordTodayFills(formData: FormData) {
       buyNote = crashBigNumber.note;
     }
   } else {
-    filledBuyQty = buyLadder
-      .filter((tier) => judgeBuyFill(tier.limitPrice, closePrice))
-      .reduce((sum, tier) => sum + Math.max(Math.round(tier.qty), 0), 0);
+    // 체결된 단계의 예산 합계 / 종가로 수량 역산
+    // → 단계별 독립 반올림(0.33주→0주)으로 인한 수량 누락 방지
+    filledTiers = buyLadder.filter((tier) => judgeBuyFill(tier.limitPrice, closePrice));
+    const filledBudget = filledTiers.reduce((sum, tier) => sum + tier.budget, 0);
+    filledBuyQty = filledBudget > 0 ? Math.round(filledBudget / closePrice) : 0;
 
     // 갭상승 대응: 첫 매수(T=0) 사다리의 가장 높은 큰수보다 종가가 더 높게 마감해
     // 정상 사다리로는 하나도 체결되지 않는다면, "처음 매수는 무조건 매수" 원칙에 따라
@@ -387,7 +390,8 @@ export async function autoRecordTodayFills(formData: FormData) {
   }
 
   if (filledBuyQty > 0) {
-    const buyKind: TradeKind = tValue <= 0 ? "first" : "full";
+    const avgTierFilled = filledTiers?.some((tier) => tier.level === 2 && judgeBuyFill(tier.limitPrice, closePrice));
+    const buyKind: TradeKind = tValue <= 0 ? "first" : avgTierFilled ? "full" : "half";
     planned.push({ side: "buy", tradeKind: buyKind, qty: filledBuyQty, price: closePrice, note: buyNote });
   }
 
