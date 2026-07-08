@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { autoRecordTodayFills, deleteTrade, recordTrade, updateCrashProtection } from "../../actions";
 import { DeleteTradeButton } from "../../delete-trade-button";
+import { BuyCostSummary } from "../../buy-cost-summary";
 import { fetchAndRecordPrice, recordPriceSnapshot } from "../../actions-price";
 import {
   getCurrentCycle,
@@ -217,6 +218,10 @@ export default async function ProjectDashboard({
                       </tbody>
                     </table>
                     <p>{crashBigNumber.note.replace("[특이사항] ", "")}</p>
+                    <BuyCostSummary
+                      items={[{ label: "폭락대비 큰수 LOC", qty: Math.round(crashBigNumber.qty), price: crashBigNumber.limitPrice }]}
+                      total={Math.round(crashBigNumber.qty) * crashBigNumber.limitPrice}
+                    />
                   </div>
                 ) : (
                   <>
@@ -250,6 +255,23 @@ export default async function ProjectDashboard({
                       </tbody>
                     </table>
                     </div>
+                    {(() => {
+                      // 별지점(level 1), 평단가(level 2), 첫 번째 단계별 하락(step1)만 합산
+                      const costItems = buyLadder
+                        .filter((t) => t.level === 1 || t.label.includes("평단가") || t.label.includes("단계별 하락"))
+                        .reduce<{ label: string; qty: number; price: number }[]>((acc, t) => {
+                          if (t.level === 1) return [...acc, { label: "별지점 LOC", qty: Math.round(t.qty), price: t.limitPrice }];
+                          if (t.label.includes("평단가")) return [...acc, { label: "평단가 LOC", qty: Math.round(t.qty), price: t.limitPrice }];
+                          // 단계별 하락은 첫 번째 step만 (이미 추가한 게 없는 경우)
+                          if (!acc.some((x) => x.label === "단계별 하락 1차")) {
+                            return [...acc, { label: "단계별 하락 1차 LOC", qty: Math.round(t.qty), price: t.limitPrice }];
+                          }
+                          return acc;
+                        }, [])
+                        .filter((item) => item.qty > 0);
+                      const total = costItems.reduce((s, x) => s + x.qty * x.price, 0);
+                      return <BuyCostSummary items={costItems} total={total} />;
+                    })()}
                     <p className="mt-1 text-xs text-zinc-500">
                       오늘 장이 마감되어 종가가 입력되면, 이 사다리를 기준으로 체결 여부가 자동 기록됩니다 (종가 ≤ 지정가 → 체결).
                     </p>
