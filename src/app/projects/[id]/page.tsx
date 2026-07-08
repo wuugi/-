@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { recordTrade, updateCrashProtection } from "../../actions";
+import { autoRecordTodayFills, deleteTrade, recordTrade, updateCrashProtection } from "../../actions";
 import { DeleteTradeButton } from "../../delete-trade-button";
-import { AutoRecordButton } from "../../auto-record-button";
+import { BuyCostSummary } from "../../buy-cost-summary";
 import { fetchAndRecordPrice, recordPriceSnapshot } from "../../actions-price";
 import {
   getCurrentCycle,
@@ -147,7 +147,7 @@ export default async function ProjectDashboard({
           <select
             name="crashProtectionPct"
             defaultValue={String(strategy.crashProtectionPct)}
-            className="rounded border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1 text-sm dark:border-zinc-700"
+            className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
           >
             <option value="20">20%</option>
             <option value="30">30%</option>
@@ -218,6 +218,10 @@ export default async function ProjectDashboard({
                       </tbody>
                     </table>
                     <p>{crashBigNumber.note.replace("[특이사항] ", "")}</p>
+                    <BuyCostSummary
+                      items={[{ label: "폭락대비 큰수 LOC", qty: Math.round(crashBigNumber.qty), price: crashBigNumber.limitPrice }]}
+                      total={Math.round(crashBigNumber.qty) * crashBigNumber.limitPrice}
+                    />
                   </div>
                 ) : (
                   <>
@@ -251,6 +255,23 @@ export default async function ProjectDashboard({
                       </tbody>
                     </table>
                     </div>
+                    {(() => {
+                      // 별지점(level 1), 평단가(level 2), 첫 번째 단계별 하락(step1)만 합산
+                      const costItems = buyLadder
+                        .filter((t) => t.level === 1 || t.label.includes("평단가") || t.label.includes("단계별 하락"))
+                        .reduce<{ label: string; qty: number; price: number }[]>((acc, t) => {
+                          if (t.level === 1) return [...acc, { label: "별지점 LOC", qty: Math.round(t.qty), price: t.limitPrice }];
+                          if (t.label.includes("평단가")) return [...acc, { label: "평단가 LOC", qty: Math.round(t.qty), price: t.limitPrice }];
+                          // 단계별 하락은 첫 번째 step만 (이미 추가한 게 없는 경우)
+                          if (!acc.some((x) => x.label === "단계별 하락 1차")) {
+                            return [...acc, { label: "단계별 하락 1차 LOC", qty: Math.round(t.qty), price: t.limitPrice }];
+                          }
+                          return acc;
+                        }, [])
+                        .filter((item) => item.qty > 0);
+                      const total = costItems.reduce((s, x) => s + x.qty * x.price, 0);
+                      return <BuyCostSummary items={costItems} total={total} />;
+                    })()}
                     <p className="mt-1 text-xs text-zinc-500">
                       오늘 장이 마감되어 종가가 입력되면, 이 사다리를 기준으로 체결 여부가 자동 기록됩니다 (종가 ≤ 지정가 → 체결).
                     </p>
@@ -325,7 +346,7 @@ export default async function ProjectDashboard({
                 name="date"
                 defaultValue={todayIso()}
                 required
-                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
+                className="rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               />
             </label>
             <label className="flex flex-1 flex-col gap-1 text-sm">
@@ -336,7 +357,7 @@ export default async function ProjectDashboard({
                 step="0.01"
                 min={0}
                 required
-                className="rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
+                className="rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               />
             </label>
             <button type="submit" className="shrink-0 whitespace-nowrap rounded-full bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-shadow hover:shadow-md">
@@ -421,7 +442,15 @@ export default async function ProjectDashboard({
         <div className="rounded-2xl border border-zinc-200/70 bg-[var(--surface)] p-5 shadow-sm dark:border-zinc-800">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">거래 입력</h2>
-            <AutoRecordButton strategyId={strategy.id} />
+            <form action={autoRecordTodayFills}>
+              <input type="hidden" name="strategyId" value={strategy.id} />
+              <button
+                type="submit"
+                className="whitespace-nowrap rounded-full border border-[var(--accent)]/40 px-3.5 py-1.5 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
+              >
+                최근 종가 기준 자동 기록
+              </button>
+            </form>
           </div>
           <p className="mb-3 -mt-1 text-xs text-zinc-500">
             제안된 사다리/매도 지정가에 종가가 닿으면 자동으로 체결로 판단해 기록합니다. 자동 판단이 실제 체결과 다르면
@@ -437,7 +466,7 @@ export default async function ProjectDashboard({
                   name="date"
                   defaultValue={todayIso()}
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
               <label className="flex min-w-0 flex-1 flex-col gap-1">
@@ -445,7 +474,7 @@ export default async function ProjectDashboard({
                 <select
                   name="side"
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 >
                   <option value="buy">매수</option>
                   <option value="sell">매도</option>
@@ -457,7 +486,7 @@ export default async function ProjectDashboard({
               <select
                 name="tradeKind"
                 required
-                className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
+                className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <optgroup label="매수">
                   <option value="first">첫매수 (T 0 → 진행)</option>
@@ -480,7 +509,7 @@ export default async function ProjectDashboard({
                   step="0.01"
                   min={0}
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
               <label className="flex min-w-0 flex-1 flex-col gap-1">
@@ -491,7 +520,7 @@ export default async function ProjectDashboard({
                   step="0.0001"
                   min={0}
                   required
-                  className="w-full min-w-0 rounded-lg border border-zinc-300 bg-[var(--surface)] text-[var(--foreground)] px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700"
+                  className="w-full min-w-0 rounded-lg border border-zinc-300 px-2 py-1.5 outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-zinc-700 dark:bg-zinc-900"
                 />
               </label>
             </div>

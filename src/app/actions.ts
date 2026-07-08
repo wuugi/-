@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db/client";
-import { strategies, cycles, trades, holdingsDaily, priceSnapshots } from "@/db/schema";
-import { and, eq, asc, desc, lt } from "drizzle-orm";
+import { strategies, cycles, trades, holdingsDaily, priceSnapshots, autoRecordSkipped } from "@/db/schema";
+import { sql, and, eq, asc, desc, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isUsMarketTradingDay, todayIsoKst, usMarketCloseUtcMs } from "@/lib/market-date";
@@ -110,6 +110,8 @@ export async function deleteStrategy(formData: FormData) {
   await db.delete(trades).where(eq(trades.strategyId, strategyId));
   await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
   await db.delete(cycles).where(eq(cycles.strategyId, strategyId));
+  await ensureSkippedTable();
+  await db.delete(autoRecordSkipped).where(eq(autoRecordSkipped.strategyId, strategyId));
   await db.delete(strategies).where(eq(strategies.id, strategyId));
 
   revalidatePath("/");
@@ -158,8 +160,8 @@ export async function recordTrade(formData: FormData) {
   const [latestHoldings] = await db
     .select()
     .from(holdingsDaily)
-    .where(and(eq(holdingsDaily.strategyId, strategyId), lt(holdingsDaily.date, date)))
-    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
+    .where(eq(holdingsDaily.strategyId, strategyId))
+    .orderBy(desc(holdingsDaily.id))
     .limit(1);
 
   const tBefore = latestHoldings?.tValue ?? 0;
@@ -178,18 +180,44 @@ export async function recordTrade(formData: FormData) {
     note,
   });
 
-  // 삽입 후 전체 replay: 과거 날짜 입력 등으로 T값 순서가 틀릴 수 있으므로 전체 재계산
-  await replayTrades(strategyId);
+  // 전체 체결 내역으로 평단가/보유수량/예수금 재계산
+  const allTrades = await db
+    .select()
+    .from(trades)
+    .where(eq(trades.strategyId, strategyId))
+    .orderBy(asc(trades.date), asc(trades.id));
+
+  let qtyHeld = 0;
+  let avgPrice = 0;
+  let cashBalance = strategy.principal;
+
+  for (const t of allTrades) {
+    if (t.side === "buy") {
+      const totalCost = avgPrice * qtyHeld + t.price * t.qty;
+      qtyHeld += t.qty;
+      avgPrice = qtyHeld > 0 ? totalCost / qtyHeld : 0;
+      cashBalance -= t.price * t.qty;
+    } else {
+      qtyHeld -= t.qty;
+      cashBalance += t.price * t.qty;
+      if (qtyHeld <= 0) {
+        qtyHeld = 0;
+        avgPrice = 0;
+      }
+    }
+  }
+
+  await db.insert(holdingsDaily).values({
+    strategyId,
+    date,
+    avgPrice,
+    qty: qtyHeld,
+    cashBalance,
+    tValue: tAfter,
+  });
 
   // 매도 체결로 보유 수량이 0이 되면 현재 사이클을 완료 처리하고 T=0인 새 사이클을 시작한다
-  const [latestAfterReplay] = await db
-    .select()
-    .from(holdingsDaily)
-    .where(eq(holdingsDaily.strategyId, strategyId))
-    .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
-    .limit(1);
-
-  if (side === "sell" && (latestAfterReplay?.qty ?? 0) === 0 && activeCycle) {
+  if (side === "sell" && qtyHeld === 0 && activeCycle) {
     await db
       .update(cycles)
       .set({ status: "완료", completedAt: date })
@@ -201,6 +229,75 @@ export async function recordTrade(formData: FormData) {
       status: "진행중",
       startedAt: date,
     });
+
+    await db.insert(holdingsDaily).values({
+      strategyId,
+      date,
+      avgPrice: 0,
+      qty: 0,
+      cashBalance,
+      tValue: 0,
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/projects/${strategyId}`);
+}
+
+/** auto_record_skipped 테이블이 없으면 생성 (마이그레이션 대신 런타임 생성) */
+async function ensureSkippedTable() {
+  await db.run(sql`
+    CREATE TABLE IF NOT EXISTS auto_record_skipped (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strategy_id INTEGER NOT NULL,
+      date TEXT NOT NULL
+    )
+  `);
+}
+
+/** 체결 기록을 삭제하고 해당 날짜를 자동 기록 차단 목록에 추가한다 */
+export async function deleteTrade(formData: FormData) {
+  const tradeId = Number(formData.get("tradeId"));
+  const strategyId = Number(formData.get("strategyId"));
+  if (!tradeId || !strategyId) throw new Error("잘못된 요청");
+
+  const [target] = await db.select().from(trades).where(and(eq(trades.id, tradeId), eq(trades.strategyId, strategyId))).limit(1);
+  if (!target) throw new Error("체결 기록을 찾을 수 없습니다.");
+  const deletedDate = target.date;
+
+  await db.delete(trades).where(and(eq(trades.id, tradeId), eq(trades.strategyId, strategyId)));
+
+  // 해당 날짜를 자동 기록 차단 목록에 추가 (이미 있어도 중복 허용 — 조회 시 존재 여부만 확인)
+  await ensureSkippedTable();
+  await db.insert(autoRecordSkipped).values({ strategyId, date: deletedDate });
+
+  // T값 / 평단가 / 예수금 전체 재계산
+  const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
+  if (!strategy) throw new Error("전략 없음");
+
+  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
+
+  const allTrades = await db.select().from(trades)
+    .where(eq(trades.strategyId, strategyId))
+    .orderBy(asc(trades.date), asc(trades.id));
+
+  let avgPrice = 0, qtyHeld = 0, cashBalance = strategy.principal, tValue = 0;
+  for (const t of allTrades) {
+    const tBefore = tValue;
+    const tAfter = applyTDelta(tBefore, t.tradeKind as TradeKind);
+    tValue = tAfter;
+    await db.update(trades).set({ tBefore, tAfter }).where(eq(trades.id, t.id));
+    if (t.side === "buy") {
+      const totalCost = avgPrice * qtyHeld + t.price * t.qty;
+      qtyHeld += t.qty;
+      avgPrice = qtyHeld > 0 ? totalCost / qtyHeld : 0;
+      cashBalance -= t.price * t.qty;
+    } else {
+      qtyHeld -= t.qty;
+      cashBalance += t.price * t.qty;
+      if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
+    }
+    await db.insert(holdingsDaily).values({ strategyId, date: t.date, avgPrice, qty: qtyHeld, cashBalance, tValue: tAfter });
   }
 
   revalidatePath("/");
@@ -215,229 +312,197 @@ export async function recordTrade(formData: FormData) {
  *  - 잔여 지정가 매도: 장중 고가 데이터가 있으면 고가 기준으로, 없으면 종가 기준으로 체결 가능성을 판단해
  *    지정가에 체결된 것으로 기록한다 (실제 체결가가 더 좋았을 수 있으므로 거래 입력에서 보정 가능)
  */
-export async function autoRecordTodayFills(
-  _prevState: { ok: boolean; message: string } | null,
-  formData: FormData
-): Promise<{ ok: boolean; message: string }> {
+export async function autoRecordTodayFills(formData: FormData) {
   const strategyId = Number(formData.get("strategyId"));
-  if (!strategyId) return { ok: false, message: "전략을 찾을 수 없습니다." };
+  if (!strategyId) throw new Error("전략을 찾을 수 없습니다.");
 
   const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
-  if (!strategy) return { ok: false, message: "전략을 찾을 수 없습니다." };
+  if (!strategy) throw new Error("전략을 찾을 수 없습니다.");
 
   const ticker = strategy.ticker as Ticker;
   const crashProtectionPct = strategy.crashProtectionPct as CrashProtectionPct;
-  const createdAtMs = new Date(strategy.createdAt).getTime();
 
-  // 모든 종가 스냅샷을 날짜 오름차순으로 가져와 미처리 날짜를 순서대로 처리한다
-  const allPrices = await db
+  const [latestHoldings] = await db
+    .select()
+    .from(holdingsDaily)
+    .where(eq(holdingsDaily.strategyId, strategyId))
+    .orderBy(desc(holdingsDaily.id))
+    .limit(1);
+
+  const [latestPrice] = await db
     .select()
     .from(priceSnapshots)
     .where(eq(priceSnapshots.ticker, strategy.ticker))
-    .orderBy(priceSnapshots.date);
+    .orderBy(desc(priceSnapshots.date), desc(priceSnapshots.id))
+    .limit(1);
 
-  if (allPrices.length === 0) {
-    return { ok: false, message: "종가 데이터가 없습니다. 먼저 종가를 입력하세요." };
+  if (!latestPrice) {
+    throw new Error("종가 데이터가 없어 자동 기록할 수 없습니다. 먼저 종가를 입력하세요.");
   }
 
-  // 이미 기록된 날짜 목록
-  const existingTradeDates = new Set(
-    (await db.select({ date: trades.date }).from(trades).where(eq(trades.strategyId, strategyId)))
-      .map((r) => r.date)
-  );
+  const avgPrice = latestHoldings?.avgPrice ?? 0;
+  const qtyHeld = latestHoldings?.qty ?? 0;
+  const cashBalance = latestHoldings?.cashBalance ?? strategy.principal;
+  const tValue = latestHoldings?.tValue ?? 0;
 
-  const results: string[] = [];
+  const date = latestPrice.date;
 
-  for (let i = 0; i < allPrices.length; i++) {
-    const priceSnap = allPrices[i];
-    const date = priceSnap.date;
-
-    // 전략 생성 전 또는 장 마감 전 생성된 날짜는 건너뜀
-    if (createdAtMs > usMarketCloseUtcMs(date)) continue;
-    // 휴장일 건너뜀
-    if (!isUsMarketTradingDay(date)) continue;
-    // 이미 기록된 날짜 건너뜀
-    if (existingTradeDates.has(date)) continue;
-
-    // 전일 종가: 현재 날짜보다 이전 스냅샷 중 가장 최근 것
-    const prevPriceSnap = allPrices.slice(0, i).reverse().find(Boolean);
-    if (!prevPriceSnap) continue; // 전일 종가 없으면 건너뜀
-
-    const closePrice = priceSnap.closePrice;
-    const dayHigh = priceSnap.dayHigh ?? null;
-    const prevClose = prevPriceSnap.closePrice;
-
-    // 매 날짜 처리 전 최신 보유 현황을 다시 읽는다 (이전 날짜 기록 후 업데이트된 값)
-    const [latestHoldings] = await db
-      .select()
-      .from(holdingsDaily)
-      .where(eq(holdingsDaily.strategyId, strategyId))
-      .orderBy(desc(holdingsDaily.date), desc(holdingsDaily.id))
-      .limit(1);
-
-    const avgPrice = latestHoldings?.avgPrice ?? 0;
-    const qtyHeld = latestHoldings?.qty ?? 0;
-    const cashBalance = latestHoldings?.cashBalance ?? strategy.principal;
-    const tValue = latestHoldings?.tValue ?? 0;
-
-    const phase = getPhase(tValue, strategy.splitCount);
-    const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
-    const starPoint = avgPrice > 0 ? getStarPoint(avgPrice, starPercent) : null;
-    const dailyBudget = getDailyBuyBudget(tValue, strategy.splitCount, strategy.principal, cashBalance);
-
-    let buyLadder: LadderTier[] = [];
-    let crashBigNumber: SpecialBuyPlan | null = null;
-    if (prevClose > 0) {
-      if (tValue <= 0) {
-        buyLadder = getFirstBuyLadder(prevClose, dailyBudget, crashProtectionPct);
-      } else if (starPoint !== null) {
-        crashBigNumber = detectCrashBigNumberBuy(prevClose, starPoint, dailyBudget, crashProtectionPct);
-        if (!crashBigNumber) {
-          buyLadder =
-            phase === "전반전" && avgPrice > 0
-              ? getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct)
-              : getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
-        }
-      }
-    }
-
-    const sellPlan =
-      tValue >= 1 && qtyHeld > 0 && avgPrice > 0 && starPoint !== null
-        ? getSellPlan(ticker, avgPrice, qtyHeld, starPoint)
-        : null;
-
-    const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number; note?: string }> = [];
-
-    let filledBuyQty = 0;
-    let buyNote: string | undefined;
-
-    if (crashBigNumber) {
-      if (judgeBuyFill(crashBigNumber.limitPrice, closePrice) && crashBigNumber.qty > 0) {
-        filledBuyQty = crashBigNumber.qty;
-        buyNote = crashBigNumber.note;
-      }
-    } else {
-      filledBuyQty = buyLadder
-        .filter((tier) => judgeBuyFill(tier.limitPrice, closePrice))
-        .reduce((sum, tier) => sum + Math.max(Math.round(tier.qty), 0), 0);
-
-      if (tValue <= 0 && filledBuyQty === 0 && buyLadder.length > 0) {
-        const surgeBuy = detectSurgeForcedFirstBuy(closePrice, buyLadder, dailyBudget);
-        if (surgeBuy) {
-          filledBuyQty = surgeBuy.qty;
-          buyNote = surgeBuy.note;
-        }
-      }
-    }
-
-    if (filledBuyQty > 0) {
-      let buyKind: TradeKind;
-      if (tValue <= 0) {
-        buyKind = "first";
-      } else if (crashBigNumber) {
-        buyKind = "full";
-      } else {
-        const avgTierFilled = buyLadder.some((tier) => tier.level === 2 && judgeBuyFill(tier.limitPrice, closePrice));
-        buyKind = avgTierFilled ? "full" : "half";
-      }
-      planned.push({ side: "buy", tradeKind: buyKind, qty: filledBuyQty, price: closePrice, note: buyNote });
-    }
-
-    if (sellPlan) {
-      if (judgeSellFill(sellPlan.quarterSell.limitPrice, closePrice) && sellPlan.quarterSell.qty > 0) {
-        planned.push({ side: "sell", tradeKind: "quarterSell", qty: sellPlan.quarterSell.qty, price: closePrice });
-      }
-      if (judgeLimitSellFill(sellPlan.remainderSell.limitPrice, closePrice, dayHigh) && sellPlan.remainderSell.qty > 0) {
-        planned.push({ side: "sell", tradeKind: "remainderSell", qty: sellPlan.remainderSell.qty, price: sellPlan.remainderSell.limitPrice });
-      }
-    }
-
-    if (planned.length === 0) {
-      results.push(`${date} 체결 없음`);
-      existingTradeDates.add(date); // 처리 완료로 표시 (다음 루프에서 중복 방지)
-      continue;
-    }
-
-    for (const p of planned) {
-      const fd = new FormData();
-      fd.set("strategyId", String(strategyId));
-      fd.set("side", p.side);
-      fd.set("tradeKind", p.tradeKind);
-      fd.set("price", String(p.price));
-      fd.set("qty", String(p.qty));
-      fd.set("date", date);
-      if (p.note) fd.set("note", p.note);
-      await recordTrade(fd);
-    }
-    results.push(`${date} ${planned.length}건 기록`);
-    existingTradeDates.add(date);
+  // 전략 생성 시각(UTC)이 해당 거래일의 장 마감(4 PM ET) 이후면 그날 체결이 불가능하다.
+  // createdAt이 날짜만 있는 구 형식(예: "2026-06-08")이면 00:00 UTC로 파싱해
+  // "장 열리기 전 생성"으로 간주한다(안전한 방향).
+  const createdAtMs = new Date(strategy.createdAt).getTime();
+  const marketCloseMs = usMarketCloseUtcMs(date);
+  if (createdAtMs > marketCloseMs) {
+    // 정보성: 에러가 아니라 조용히 건너뜀
+    return;
   }
 
-  if (results.length === 0) return { ok: true, message: "처리할 미기록 날짜가 없습니다." };
-  return { ok: true, message: results.join(" / ") };
-}
+  if (!isUsMarketTradingDay(date)) {
+    return; // 휴장일도 조용히 건너뜀
+  }
 
-/**
- * 체결 기록 1건을 삭제하고, 해당 전략의 모든 trades T값과 holdingsDaily를 처음부터 재계산한다.
- */
-export async function deleteTrade(formData: FormData) {
-  const tradeId = Number(formData.get("tradeId"));
-  const strategyId = Number(formData.get("strategyId"));
-  if (!tradeId || !strategyId) throw new Error("잘못된 요청");
+  const closePrice = latestPrice.closePrice;
+  const dayHigh = latestPrice.dayHigh ?? null;
 
-  await db.delete(trades).where(and(eq(trades.id, tradeId), eq(trades.strategyId, strategyId)));
+  // 사다리의 기준이 되는 "전일 종가"는 오늘(latestPrice.date) 종가와는 별개로,
+  // 그 직전 거래일의 종가여야 한다 (같은 값을 쓰면 "종가가 전일종가의 +N% 이내"라는
+  // 사다리/큰수 판정이 항상 자명하게 참이 되어 버린다).
+  const [prevPriceSnapshot] = await db
+    .select()
+    .from(priceSnapshots)
+    .where(and(eq(priceSnapshots.ticker, strategy.ticker), lt(priceSnapshots.date, date)))
+    .orderBy(desc(priceSnapshots.date), desc(priceSnapshots.id))
+    .limit(1);
 
-  await replayTrades(strategyId);
+  if (!prevPriceSnapshot) {
+    throw new Error(
+      `${date}의 전일 종가 데이터가 없어 사다리를 계산할 수 없습니다. 직전 거래일의 종가를 먼저 입력하세요.`
+    );
+  }
 
-  revalidatePath("/");
-  revalidatePath(`/projects/${strategyId}`);
-}
+  const prevClose = prevPriceSnapshot.closePrice;
 
-/**
- * 전략의 모든 체결 기록을 날짜·id 순으로 replay해
- * trades.tBefore/tAfter와 holdingsDaily를 처음부터 재계산한다.
- */
-async function replayTrades(strategyId: number) {
-  const strategy = await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) });
-  if (!strategy) throw new Error("전략 없음");
+  const phase = getPhase(tValue, strategy.splitCount);
+  const starPercent = getStarPercent(ticker, strategy.splitCount, tValue);
+  const starPoint = avgPrice > 0 ? getStarPoint(avgPrice, starPercent) : null;
+  const dailyBudget = getDailyBuyBudget(tValue, strategy.splitCount, strategy.principal, cashBalance);
 
-  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
-
-  const allTrades = await db.select().from(trades)
-    .where(eq(trades.strategyId, strategyId))
-    .orderBy(asc(trades.date), asc(trades.id));
-
-  let avgPrice = 0;
-  let qtyHeld = 0;
-  let cashBalance = strategy.principal;
-  let tValue = 0;
-
-  for (const t of allTrades) {
-    const tBefore = tValue;
-    const tAfter = applyTDelta(tBefore, t.tradeKind as TradeKind);
-    tValue = tAfter;
-
-    // trades 테이블의 T값도 정확하게 업데이트
-    await db.update(trades).set({ tBefore, tAfter }).where(eq(trades.id, t.id));
-
-    if (t.side === "buy") {
-      const totalCost = avgPrice * qtyHeld + t.price * t.qty;
-      qtyHeld += t.qty;
-      avgPrice = qtyHeld > 0 ? totalCost / qtyHeld : 0;
-      cashBalance -= t.price * t.qty;
-    } else {
-      qtyHeld -= t.qty;
-      cashBalance += t.price * t.qty;
-      if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
+  let buyLadder: LadderTier[] = [];
+  let crashBigNumber: SpecialBuyPlan | null = null;
+  if (prevClose > 0) {
+    if (tValue <= 0) {
+      buyLadder = getFirstBuyLadder(prevClose, dailyBudget, crashProtectionPct);
+    } else if (starPoint !== null) {
+      // 폭락으로 별지점과 종가의 괴리가 폭락률 보호 구간을 넘으면 정상 사다리 대신 큰수 매수로 통합
+      crashBigNumber = detectCrashBigNumberBuy(prevClose, starPoint, dailyBudget, crashProtectionPct);
+      if (!crashBigNumber) {
+        buyLadder =
+          phase === "전반전" && avgPrice > 0
+            ? getFirstHalfLadder(avgPrice, starPoint, prevClose, dailyBudget, crashProtectionPct)
+            : getSecondHalfLadder(starPoint, prevClose, dailyBudget, crashProtectionPct);
+      }
     }
+  }
 
-    await db.insert(holdingsDaily).values({
-      strategyId,
-      date: t.date,
-      avgPrice,
-      qty: qtyHeld,
-      cashBalance,
-      tValue: tAfter,
-    });
+  const sellPlan =
+    tValue >= 1 && qtyHeld > 0 && avgPrice > 0 && starPoint !== null
+      ? getSellPlan(ticker, avgPrice, qtyHeld, starPoint)
+      : null;
+
+  // 같은 날짜에 이미 (수동/자동) 기록이 있으면 자동 기록을 건너뛴다.
+  // T값/평단가 등은 하루에 한 번만 변하므로, 재실행 시 변경된 상태로 사다리를
+  // 다시 계산해 같은 종가에 대해 또 다른 "체결"을 만들어내는 연쇄 오기록을 막기 위함이다.
+  // 사용자가 의도적으로 삭제한 날짜는 자동 재기록하지 않는다
+  await ensureSkippedTable();
+  const skipped = await db
+    .select()
+    .from(autoRecordSkipped)
+    .where(and(eq(autoRecordSkipped.strategyId, strategyId), eq(autoRecordSkipped.date, date)))
+    .limit(1);
+  if (skipped.length > 0) {
+    return; // 사용자가 이 날짜를 삭제했음 — 자동 재기록 차단
+  }
+
+  const existingTradesForDate = await db
+    .select()
+    .from(trades)
+    .where(and(eq(trades.strategyId, strategyId), eq(trades.date, date)));
+  if (existingTradesForDate.length > 0) {
+    return; // 이미 기록된 날짜 — 조용히 건너뜀
+  }
+
+  const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number; note?: string }> = [];
+
+  let filledBuyQty = 0;
+  let buyNote: string | undefined;
+  let filledTiers: typeof buyLadder = [];
+
+  if (crashBigNumber) {
+    // 폭락 대응 큰수 매수: 종가가 큰수 지정가 이하로 마감되면 통합 LOC 매수로 체결
+    if (judgeBuyFill(crashBigNumber.limitPrice, closePrice) && crashBigNumber.qty > 0) {
+      filledBuyQty = crashBigNumber.qty;
+      buyNote = crashBigNumber.note;
+    }
+  } else {
+    // 체결된 단계의 예산 합계 / 종가로 수량 역산
+    // → 단계별 독립 반올림(0.33주→0주)으로 인한 수량 누락 방지
+    filledTiers = buyLadder.filter((tier) => judgeBuyFill(tier.limitPrice, closePrice));
+    const filledBudget = filledTiers.reduce((sum, tier) => sum + tier.budget, 0);
+    filledBuyQty = filledBudget > 0 ? Math.round(filledBudget / closePrice) : 0;
+
+    // 갭상승 대응: 첫 매수(T=0) 사다리의 가장 높은 큰수보다 종가가 더 높게 마감해
+    // 정상 사다리로는 하나도 체결되지 않는다면, "처음 매수는 무조건 매수" 원칙에 따라
+    // 종가 기준 전액 매수로 자동 보정한다.
+    if (tValue <= 0 && filledBuyQty === 0 && buyLadder.length > 0) {
+      const surgeBuy = detectSurgeForcedFirstBuy(closePrice, buyLadder, dailyBudget);
+      if (surgeBuy) {
+        filledBuyQty = surgeBuy.qty;
+        buyNote = surgeBuy.note;
+      }
+    }
+  }
+
+  if (filledBuyQty > 0) {
+    const avgTierFilled = filledTiers?.some((tier) => tier.level === 2 && judgeBuyFill(tier.limitPrice, closePrice));
+    const buyKind: TradeKind = tValue <= 0 ? "first" : avgTierFilled ? "full" : "half";
+    planned.push({ side: "buy", tradeKind: buyKind, qty: filledBuyQty, price: closePrice, note: buyNote });
+  }
+
+  if (sellPlan) {
+    if (judgeSellFill(sellPlan.quarterSell.limitPrice, closePrice) && sellPlan.quarterSell.qty > 0) {
+      planned.push({
+        side: "sell",
+        tradeKind: "quarterSell",
+        qty: sellPlan.quarterSell.qty,
+        price: closePrice,
+      });
+    }
+    if (
+      judgeLimitSellFill(sellPlan.remainderSell.limitPrice, closePrice, dayHigh) &&
+      sellPlan.remainderSell.qty > 0
+    ) {
+      planned.push({
+        side: "sell",
+        tradeKind: "remainderSell",
+        qty: sellPlan.remainderSell.qty,
+        price: sellPlan.remainderSell.limitPrice,
+      });
+    }
+  }
+
+  if (planned.length === 0) {
+    return; // 종가가 어떤 지정가에도 닿지 않음 — 체결 없음, 조용히 건너뜀
+  }
+
+  for (const p of planned) {
+    const fd = new FormData();
+    fd.set("strategyId", String(strategyId));
+    fd.set("side", p.side);
+    fd.set("tradeKind", p.tradeKind);
+    fd.set("price", String(p.price));
+    fd.set("qty", String(p.qty));
+    fd.set("date", date);
+    if (p.note) fd.set("note", p.note);
+    await recordTrade(fd);
   }
 }

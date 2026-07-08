@@ -11,7 +11,9 @@ export function DeleteTradeButton({ tradeId, strategyId }: { tradeId: number; st
         type="submit"
         className="text-xs text-zinc-400 hover:text-[var(--negative)] transition-colors"
         onClick={(e) => {
-          if (!confirm("이 체결 기록을 삭제하시겠습니까?")) e.preventDefault();
+          if (!confirm("이 체결 기록을 삭제하시겠습니까?\n삭제하면 해당 날짜는 자동 기록 대상에서 제외됩니다.")) {
+            e.preventDefault();
+          }
         }}
       >
         삭제
