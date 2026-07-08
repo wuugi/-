@@ -120,7 +120,11 @@ function getStepPct(crashProtectionPct: CrashProtectionPct, count: number): numb
   return crashProtectionPct / count;
 }
 
-/** 기준가에서 -stepPct%p씩 내려가는 보조 단계별 LOC 사다리 (잔여 예산 소진용) */
+/**
+ * 기준가에서 -stepPct%p씩 내려가는 보조 단계별 LOC 사다리 (잔여 예산 소진용).
+ * totalBudget을 넘기면 총 수량을 먼저 계산한 뒤 앞 단계(높은 가격)부터 1주씩 채운다.
+ * 이렇게 하면 예산이 작아 단계별로 쪼개면 0주가 되는 문제를 방지할 수 있다.
+ */
 function buildStepDownLadder(
   basePrice: number,
   startLevel: number,
@@ -130,15 +134,22 @@ function buildStepDownLadder(
   label: string,
   budgetEach = 0
 ): LadderTier[] {
+  // totalBudget이 있으면 합산 수량을 앞 단계부터 배분
+  const totalBudget = budgetEach * count;
+  const totalQty = totalBudget > 0 ? Math.round(totalBudget / basePrice) : qtyEach * count;
+  let remaining = totalQty;
+
   const tiers: LadderTier[] = [];
   for (let i = 0; i < count; i++) {
     const level = startLevel + i;
     const dropPct = Number((stepPct * (i + 1)).toFixed(2));
+    const qty = totalBudget > 0 ? (remaining > 0 ? 1 : 0) : qtyEach;
+    if (totalBudget > 0) remaining -= qty;
     tiers.push({
       level,
       dropPct,
       limitPrice: Number((basePrice * (1 - dropPct / 100)).toFixed(2)),
-      qty: qtyEach,
+      qty,
       budget: budgetEach,
       label,
     });
