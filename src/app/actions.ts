@@ -447,8 +447,7 @@ export async function autoRecordTodayFills(
     // 체결된 단계의 예산 합계 / 종가로 수량 역산
     // → 단계별 독립 반올림(0.33주→0주)으로 인한 수량 누락 방지
     filledTiers = buyLadder.filter((tier) => judgeBuyFill(tier.limitPrice, closePrice));
-    const filledBudget = filledTiers.reduce((sum, tier) => sum + tier.budget, 0);
-    filledBuyQty = filledBudget > 0 ? Math.round(filledBudget / closePrice) : 0;
+    filledBuyQty = filledTiers.reduce((sum, tier) => sum + tier.qty, 0);
 
     // 갭상승 대응: 첫 매수(T=0) 사다리의 가장 높은 큰수보다 종가가 더 높게 마감해
     // 정상 사다리로는 하나도 체결되지 않는다면, "처음 매수는 무조건 매수" 원칙에 따라
