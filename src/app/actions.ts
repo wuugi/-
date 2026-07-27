@@ -255,6 +255,21 @@ async function ensureSkippedTable() {
   `);
 }
 
+/** 특정 날짜의 자동 기록 차단을 해제한다 (날짜 미지정 시 전체 해제) */
+export async function clearAutoRecordSkip(formData: FormData) {
+  const strategyId = Number(formData.get("strategyId"));
+  const date = formData.get("date") as string | null;
+  await ensureSkippedTable();
+  if (date) {
+    await db
+      .delete(autoRecordSkipped)
+      .where(and(eq(autoRecordSkipped.strategyId, strategyId), eq(autoRecordSkipped.date, date)));
+  } else {
+    await db.delete(autoRecordSkipped).where(eq(autoRecordSkipped.strategyId, strategyId));
+  }
+  revalidatePath(`/projects/${strategyId}`);
+}
+
 /** 체결 기록을 삭제하고 해당 날짜를 자동 기록 차단 목록에 추가한다 */
 export async function deleteTrade(formData: FormData) {
   const tradeId = Number(formData.get("tradeId"));
@@ -420,7 +435,7 @@ export async function autoRecordTodayFills(
     .where(and(eq(autoRecordSkipped.strategyId, strategyId), eq(autoRecordSkipped.date, date)))
     .limit(1);
   if (skipped.length > 0) {
-    return { ok: true, message: "사용자가 삭제한 날짜라 자동 기록 건너뜀" };
+    return { ok: true, message: `SKIPPED:${date}` };
   }
 
   const existingTradesForDate = await db
@@ -445,15 +460,10 @@ export async function autoRecordTodayFills(
     }
   } else {
     filledTiers = buyLadder.filter((tier) => judgeBuyFill(tier.limitPrice, closePrice));
-    filledBuyQty = filledTiers.reduce((sum, t) => sum + t.qty, 0);
-
-    console.log("[autoRecord debug]", JSON.stringify({
-      date, closePrice, prevClose, tValue, phase, dailyBudget,
-      buyLadder: buyLadder.map(t => ({ level: t.level, limitPrice: t.limitPrice, qty: t.qty, budget: t.budget, label: t.label })),
-      filledCount: filledTiers.length,
-      filledTiers: filledTiers.map(t => ({ level: t.level, limitPrice: t.limitPrice, qty: t.qty, budget: t.budget })),
-      filledBuyQty,
-    }));
+    // budget 합계 / 종가로 단일 반올림: 각 티어 독립 반올림 누적 오차를 방지
+    // qty=0인 step 티어는 lao-strategy.ts에서 budget=0으로 세팅되므로 자동으로 제외됨
+    const filledBudget = filledTiers.reduce((sum, t) => sum + t.budget, 0);
+    filledBuyQty = filledBudget > 0 ? Math.round(filledBudget / closePrice) : 0;
 
     // 갭상승 대응: 첫 매수(T=0) 사다리의 가장 높은 큰수보다 종가가 더 높게 마감해
     // 정상 사다리로는 하나도 체결되지 않는다면, "처음 매수는 무조건 매수" 원칙에 따라

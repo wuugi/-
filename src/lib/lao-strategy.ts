@@ -150,7 +150,7 @@ function buildStepDownLadder(
       dropPct,
       limitPrice: Number((basePrice * (1 - dropPct / 100)).toFixed(2)),
       qty,
-      budget: budgetEach,
+      budget: qty > 0 ? budgetEach : 0,
       label,
     });
   }
