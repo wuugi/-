@@ -444,18 +444,16 @@ export async function autoRecordTodayFills(
       buyNote = crashBigNumber.note;
     }
   } else {
-    // 체결된 단계의 예산 합계 / 종가로 수량 역산
-    // → 단계별 독립 반올림(0.33주→0주)으로 인한 수량 누락 방지
     filledTiers = buyLadder.filter((tier) => judgeBuyFill(tier.limitPrice, closePrice));
-    // qty>0인 티어의 budget 합계 / 종가로 단일 반올림 → 각 티어 독립 반올림 누적 방지
-    // qty=0인 step 티어(예산은 있지만 수량 미배분)는 제외
-    const filledBudgetEffective = filledTiers
-      .filter((t) => t.qty > 0)
-      .reduce((sum, t) => sum + t.budget, 0);
-    filledBuyQty =
-      filledBudgetEffective > 0
-        ? Math.round(filledBudgetEffective / closePrice)
-        : filledTiers.reduce((sum, t) => sum + t.qty, 0);
+    filledBuyQty = filledTiers.reduce((sum, t) => sum + t.qty, 0);
+
+    console.log("[autoRecord debug]", JSON.stringify({
+      date, closePrice, prevClose, tValue, phase, dailyBudget,
+      buyLadder: buyLadder.map(t => ({ level: t.level, limitPrice: t.limitPrice, qty: t.qty, budget: t.budget, label: t.label })),
+      filledCount: filledTiers.length,
+      filledTiers: filledTiers.map(t => ({ level: t.level, limitPrice: t.limitPrice, qty: t.qty, budget: t.budget })),
+      filledBuyQty,
+    }));
 
     // 갭상승 대응: 첫 매수(T=0) 사다리의 가장 높은 큰수보다 종가가 더 높게 마감해
     // 정상 사다리로는 하나도 체결되지 않는다면, "처음 매수는 무조건 매수" 원칙에 따라
