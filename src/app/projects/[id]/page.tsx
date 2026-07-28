@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteTrade, recordTrade, updateCrashProtection } from "../../actions";
+import { deleteTrade, recordTrade, updateCrashProtection, updatePrincipal } from "../../actions";
 import { DeleteTradeButton } from "../../delete-trade-button";
 import { BuyCostSummary } from "../../buy-cost-summary";
 import { AutoRecordButton } from "../../auto-record-button";
@@ -153,6 +153,26 @@ export default async function ProjectDashboard({
             <option value="20">20%</option>
             <option value="30">30%</option>
           </select>
+          <button type="submit" className="rounded-full bg-[var(--accent)] px-3.5 py-1 text-sm font-medium text-white shadow-sm transition-shadow hover:shadow-md">
+            변경
+          </button>
+        </form>
+      </section>
+
+      {/* 원금 수정 */}
+      <section className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200/70 bg-[var(--surface)] px-4 py-3 text-sm shadow-sm dark:border-zinc-800">
+        <span className="text-zinc-500">원금</span>
+        <span className="font-semibold">${fmt(strategy.principal)}</span>
+        <form action={updatePrincipal} className="ml-auto flex items-center gap-2">
+          <input type="hidden" name="strategyId" value={strategy.id} />
+          <input
+            type="number"
+            name="principal"
+            defaultValue={strategy.principal}
+            step="100"
+            min="100"
+            className="w-28 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          />
           <button type="submit" className="rounded-full bg-[var(--accent)] px-3.5 py-1 text-sm font-medium text-white shadow-sm transition-shadow hover:shadow-md">
             변경
           </button>

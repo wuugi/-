@@ -79,6 +79,40 @@ export async function createStrategy(formData: FormData) {
   redirect(`/projects/${strategy.id}`);
 }
 
+/** 원금을 수정하고 모든 체결 기록을 기반으로 holdingsDaily를 재계산한다 */
+export async function updatePrincipal(formData: FormData) {
+  const strategyId = Number(formData.get("strategyId"));
+  const newPrincipal = Number(formData.get("principal"));
+  if (!strategyId || !newPrincipal || newPrincipal <= 0) throw new Error("올바른 원금을 입력하세요.");
+
+  await db.update(strategies).set({ principal: newPrincipal }).where(eq(strategies.id, strategyId));
+
+  // holdingsDaily 전체 재계산 (deleteTrade와 동일한 replay 로직)
+  const [strategy] = await db.select().from(strategies).where(eq(strategies.id, strategyId)).limit(1);
+  const allTrades = await db.select().from(trades).where(eq(trades.strategyId, strategyId)).orderBy(asc(trades.date), asc(trades.id));
+  await db.delete(holdingsDaily).where(eq(holdingsDaily.strategyId, strategyId));
+
+  let avgPrice = 0, qtyHeld = 0, cashBalance = newPrincipal, tValue = 0;
+  for (const t of allTrades) {
+    const tBefore = tValue;
+    if (t.side === "buy") {
+      const totalCost = avgPrice * qtyHeld + t.price * t.qty;
+      qtyHeld += t.qty;
+      avgPrice = qtyHeld > 0 ? totalCost / qtyHeld : 0;
+      cashBalance -= t.price * t.qty;
+      tValue += t.tradeKind === "full" ? 1 : t.tradeKind === "half" ? 0.5 : 1;
+    } else {
+      qtyHeld -= t.qty;
+      cashBalance += t.price * t.qty;
+      if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
+      tValue = t.tAfter ?? tValue;
+    }
+    await db.insert(holdingsDaily).values({ strategyId, date: t.date, avgPrice, qty: qtyHeld, cashBalance, tValue }).onConflictDoUpdate({ target: [holdingsDaily.strategyId, holdingsDaily.date], set: { avgPrice, qty: qtyHeld, cashBalance, tValue } });
+  }
+
+  revalidatePath(`/projects/${strategyId}`);
+}
+
 /** 폭락률 보호 구간(20%/30%)을 대시보드에서 수정한다 */
 export async function updateCrashProtection(formData: FormData) {
   const strategyId = Number(formData.get("strategyId"));
