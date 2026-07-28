@@ -191,11 +191,11 @@ export function getFirstHalfLadder(
   dailyBudget: number,
   crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
-  const half = dailyBudget / 2;
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starBudget = half / 2;
-  const avgBudget = half / 2;
-  const stepBudget = half / 2 / 3;
+  // 원문: 1회매수액의 절반은 별지점 LOC, 나머지 절반은 평단가 LOC
+  const starBudget = dailyBudget / 2;
+  const avgBudget = dailyBudget / 2;
+  const stepBudget = dailyBudget / 2 / 3;
   const starQty = roundQty(starBudget / buyTrigger);
   const avgQty = roundQty(avgBudget / avgPrice);
   const stepQty = roundQty(stepBudget / prevClose);
@@ -218,8 +218,9 @@ export function getSecondHalfLadder(
   crashProtectionPct: CrashProtectionPct = 20
 ): LadderTier[] {
   const buyTrigger = getBuyTriggerPrice(starPoint);
-  const starBudget = dailyBudget / 2;
-  const stepBudget = dailyBudget / 2 / 4;
+  // 원문: 1회매수액 전체를 별지점 LOC로
+  const starBudget = dailyBudget;
+  const stepBudget = dailyBudget / 4;
   const starQty = roundQty(starBudget / buyTrigger);
   const stepQty = roundQty(stepBudget / prevClose);
   const stepPct = getStepPct(crashProtectionPct, 4);
