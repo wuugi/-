@@ -97,6 +97,9 @@ export async function updatePrincipal(formData: FormData) {
     .orderBy(asc(trades.date), asc(trades.id));
 
   let avgPrice = 0, qtyHeld = 0, cashBalance = newPrincipal, tValue = 0;
+  if (allTrades.length === 0) {
+    await db.insert(holdingsDaily).values({ strategyId, date: todayIso(), avgPrice: 0, qty: 0, cashBalance: newPrincipal, tValue: 0 });
+  }
   for (const t of allTrades) {
     const tBefore = tValue;
     const tAfter = applyTDelta(tBefore, t.tradeKind as TradeKind);
