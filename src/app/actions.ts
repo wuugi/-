@@ -489,6 +489,12 @@ export async function autoRecordTodayFills(
     return { ok: true, message: "이미 기록된 날짜" };
   }
 
+  // 진단 로그: 계산에 사용된 모든 값 출력
+  console.log(`[autoRecord:${date}] avgPrice=${avgPrice} tValue=${tValue} cashBalance=${cashBalance} dailyBudget=${dailyBudget} phase=${phase} starPoint=${starPoint} prevClose=${prevClose} closePrice=${closePrice} crashBigNumber=${crashBigNumber ? `limitPrice=${crashBigNumber.limitPrice} qty=${crashBigNumber.qty}` : "null"}`);
+  if (buyLadder.length > 0) {
+    console.log(`[autoRecord:${date}] ladder:`, buyLadder.map(t => `[L${t.level} @${t.limitPrice} qty=${t.qty} budget=${t.budget}]`).join(", "));
+  }
+
   const planned: Array<{ side: "buy" | "sell"; tradeKind: TradeKind; qty: number; price: number; note?: string }> = [];
 
   let filledBuyQty = 0;
