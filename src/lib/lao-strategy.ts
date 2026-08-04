@@ -26,10 +26,10 @@ export function getPhase(tValue: number, splitCount: number): Phase {
 export function getStarPercent(ticker: Ticker, splitCount: number, tValue: number): number {
   if (ticker === "TQQQ") {
     const slope = splitCount === 40 ? 0.75 : 1.5;
-    return Number((15 - slope * tValue).toFixed(4));
+    return Number(Math.max(0, 15 - slope * tValue).toFixed(4));
   }
   const slope = splitCount === 40 ? 1 : 2;
-  return Number((20 - slope * tValue).toFixed(4));
+  return Number(Math.max(0, 20 - slope * tValue).toFixed(4));
 }
 
 /** 별지점 = 평단가 * (1 + 별% / 100) */
