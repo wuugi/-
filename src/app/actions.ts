@@ -116,6 +116,10 @@ export async function updatePrincipal(formData: FormData) {
       if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
     }
     await db.insert(holdingsDaily).values({ strategyId, date: t.date, avgPrice, qty: qtyHeld, cashBalance, tValue: tAfter });
+    if (t.side === "sell" && qtyHeld === 0) {
+      tValue = 0;
+      await db.insert(holdingsDaily).values({ strategyId, date: t.date, avgPrice: 0, qty: 0, cashBalance, tValue: 0 });
+    }
   }
 
   revalidatePath("/");
@@ -356,6 +360,11 @@ export async function deleteTrade(formData: FormData) {
       if (qtyHeld <= 0) { qtyHeld = 0; avgPrice = 0; }
     }
     await db.insert(holdingsDaily).values({ strategyId, date: t.date, avgPrice, qty: qtyHeld, cashBalance, tValue: tAfter });
+    // 전량 매도로 보유수량이 0이 되면 T값을 0으로 리셋한 새 스냅샷 삽입
+    if (t.side === "sell" && qtyHeld === 0) {
+      tValue = 0;
+      await db.insert(holdingsDaily).values({ strategyId, date: t.date, avgPrice: 0, qty: 0, cashBalance, tValue: 0 });
+    }
   }
 
   revalidatePath("/");
